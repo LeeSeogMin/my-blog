@@ -4,8 +4,9 @@
  */
 
 import Link from 'next/link';
-import { getCategoriesWithCount } from '@/data/mockData';
+import { createServerClient } from '@/lib/supabase-server';
 import type { Metadata } from 'next';
+import type { Categories } from '@/types/database.types';
 
 // 페이지 메타데이터
 export const metadata: Metadata = {
@@ -17,9 +18,41 @@ export const metadata: Metadata = {
   },
 };
 
-export default function CategoriesPage() {
-  // 카테고리별 포스트 개수와 함께 가져오기
-  const categoriesWithCount = getCategoriesWithCount();
+export default async function CategoriesPage() {
+  // Supabase 클라이언트 생성
+  const supabase = createServerClient();
+
+  try {
+    // 카테고리 목록 조회
+    const { data: categories, error: categoriesError } = await supabase
+      .from('categories')
+      .select('*')
+      .order('name');
+
+    if (categoriesError) {
+      console.error('카테고리 조회 오류:', categoriesError);
+      throw categoriesError;
+    }
+
+    // 각 카테고리별 게시물 수 조회
+    const categoriesWithCount = await Promise.all(
+      (categories || []).map(async (category) => {
+        const { count } = await supabase
+          .from('posts')
+          .select('*', { count: 'exact', head: true })
+          .eq('status', 'published')
+          .eq('category_id', category.id);
+
+        return {
+          id: category.id,
+          name: category.name,
+          slug: category.slug,
+          description: category.description || `${category.name} 관련 글들을 모아놓은 카테고리입니다.`,
+          postCount: count || 0,
+          color: '#3b82f6' // 기본 색상 (추후 데이터베이스에 color 컬럼 추가 시 사용)
+        };
+      })
+    );
 
   return (
     <div className="py-16">
@@ -120,4 +153,37 @@ export default function CategoriesPage() {
       </section>
     </div>
   );
+  } catch (error) {
+    console.error('카테고리 데이터 조회 중 오류 발생:', error);
+    
+    // 에러 발생 시 빈 상태 표시
+    return (
+      <div className="py-16">
+        <section className="text-center mb-16">
+          <h1 className="text-4xl md:text-5xl font-bold mb-4">
+            카테고리
+          </h1>
+          <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
+            관심 있는 주제별로 글을 찾아보세요. 각 카테고리마다 엄선된 고품질 콘텐츠를 제공합니다.
+          </p>
+        </section>
+
+        <section>
+          <div className="text-center py-16">
+            <div className="text-6xl mb-4">📂</div>
+            <h3 className="text-2xl font-bold mb-2">카테고리를 불러올 수 없습니다</h3>
+            <p className="text-muted-foreground mb-6">
+              일시적인 오류가 발생했습니다. 잠시 후 다시 시도해주세요.
+            </p>
+            <Link
+              href="/"
+              className="inline-flex items-center justify-center rounded-lg bg-primary px-6 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
+            >
+              홈으로 돌아가기
+            </Link>
+          </div>
+        </section>
+      </div>
+    );
+  }
 } 

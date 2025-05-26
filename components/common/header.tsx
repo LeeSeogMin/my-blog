@@ -7,7 +7,7 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import { Menu, Search, X } from 'lucide-react';
+import { Menu, Search, X, PlusCircle } from 'lucide-react';
 import { SignedIn, SignedOut, SignInButton, UserButton } from '@clerk/nextjs';
 import { Button } from '@/components/ui/button';
 import {
@@ -110,6 +110,19 @@ export default function Header() {
           <div className="flex items-center space-x-4">
             {/* 인증 상태에 따른 버튼 */}
             <SignedIn>
+              {/* 관리자 메뉴 - 새 글 작성 */}
+              <Button
+                variant="outline"
+                size="sm"
+                asChild
+                className="hidden md:flex items-center gap-2"
+              >
+                <Link href="/admin/post/new">
+                  <PlusCircle className="h-4 w-4" />
+                  새 글 작성
+                </Link>
+              </Button>
+              
               <UserButton
                 afterSignOutUrl="/"
                 appearance={{
@@ -219,6 +232,27 @@ export default function Header() {
                       </Link>
                     ))}
                   </nav>
+
+                  {/* 모바일 관리자 메뉴 */}
+                  <SignedIn>
+                    <div className="mt-8 pt-6 border-t space-y-4">
+                      <h4 className="text-sm font-medium text-muted-foreground">관리자</h4>
+                      <Button
+                        variant="outline"
+                        className="w-full justify-start"
+                        asChild
+                      >
+                        <Link
+                          href="/admin/post/new"
+                          onClick={closeMobileMenu}
+                          aria-label="새 글 작성"
+                        >
+                          <PlusCircle className="h-4 w-4 mr-2" />
+                          새 글 작성
+                        </Link>
+                      </Button>
+                    </div>
+                  </SignedIn>
 
                   {/* 모바일 인증 옵션 */}
                   <div className="mt-8 pt-6 border-t space-y-4">

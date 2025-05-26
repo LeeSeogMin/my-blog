@@ -8,7 +8,20 @@
 import Link from 'next/link';
 import Image from 'next/image';
 import { Card, CardContent } from '@/components/ui/card';
-import { getRelativeTime, type BlogPost } from '@/data/mockData';
+import { type BlogPost } from '@/data/mockData';
+
+// 상대 시간 계산 함수
+function getRelativeTime(date: Date): string {
+  const now = new Date();
+  const diffInSeconds = Math.floor((now.getTime() - date.getTime()) / 1000);
+
+  if (diffInSeconds < 60) return '방금 전';
+  if (diffInSeconds < 3600) return `${Math.floor(diffInSeconds / 60)}분 전`;
+  if (diffInSeconds < 86400) return `${Math.floor(diffInSeconds / 3600)}시간 전`;
+  if (diffInSeconds < 2592000) return `${Math.floor(diffInSeconds / 86400)}일 전`;
+  if (diffInSeconds < 31536000) return `${Math.floor(diffInSeconds / 2592000)}개월 전`;
+  return `${Math.floor(diffInSeconds / 31536000)}년 전`;
+}
 import LikeButton from './like-button';
 
 /**
@@ -159,8 +172,8 @@ export function PostCard({
             <span>•</span>
             
             {/* 발행일 */}
-            <time dateTime={post.publishedAt.toISOString()}>
-              {getRelativeTime(post.publishedAt)}
+            <time dateTime={new Date(post.publishedAt).toISOString()}>
+              {getRelativeTime(new Date(post.publishedAt))}
             </time>
           </div>
 
@@ -200,9 +213,9 @@ export function PostCard({
             {/* 왼쪽: 작성자 정보 */}
             {showAuthor && (
               <div className="flex items-center gap-2">
-                {post.author.avatar ? (
+                {post.author.profileImage ? (
                   <Image
-                    src={post.author.avatar}
+                    src={post.author.profileImage}
                     alt={post.author.name}
                     width={24}
                     height={24}

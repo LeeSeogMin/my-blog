@@ -8,12 +8,20 @@
 import { useMemo } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
-import { 
-  getRelatedPosts, 
-  getLatestPosts,
-  getRelativeTime,
-  type BlogPost 
-} from '@/data/mockData';
+import { type BlogPost } from '@/data/mockData';
+
+// 상대 시간 계산 함수
+function getRelativeTime(date: Date): string {
+  const now = new Date();
+  const diffInSeconds = Math.floor((now.getTime() - date.getTime()) / 1000);
+
+  if (diffInSeconds < 60) return '방금 전';
+  if (diffInSeconds < 3600) return `${Math.floor(diffInSeconds / 60)}분 전`;
+  if (diffInSeconds < 86400) return `${Math.floor(diffInSeconds / 3600)}시간 전`;
+  if (diffInSeconds < 2592000) return `${Math.floor(diffInSeconds / 86400)}일 전`;
+  if (diffInSeconds < 31536000) return `${Math.floor(diffInSeconds / 2592000)}개월 전`;
+  return `${Math.floor(diffInSeconds / 31536000)}년 전`;
+}
 
 /**
  * RelatedPosts 컴포넌트의 Props 인터페이스
@@ -117,9 +125,9 @@ function RelatedPostCard({ post, compact = false }: RelatedPostCardProps) {
         <div className="flex items-center justify-between">
           {/* 작성자 */}
           <div className="flex items-center gap-2">
-            {post.author.avatar ? (
+            {post.author.profileImage ? (
               <Image
-                src={post.author.avatar}
+                src={post.author.profileImage}
                 alt={post.author.name}
                 width={20}
                 height={20}
@@ -137,10 +145,10 @@ function RelatedPostCard({ post, compact = false }: RelatedPostCardProps) {
 
           {/* 발행일 */}
           <time 
-            dateTime={post.publishedAt.toISOString()}
+            dateTime={new Date(post.publishedAt).toISOString()}
             className="text-xs text-muted-foreground"
           >
-            {getRelativeTime(post.publishedAt)}
+            {getRelativeTime(new Date(post.publishedAt))}
           </time>
         </div>
       </div>
@@ -234,21 +242,10 @@ export default function RelatedPosts({
   fallbackToLatest = true,
   compact = false,
 }: RelatedPostsProps) {
-  // 관련 포스트 계산 (메모이제이션)
+  // 관련 포스트 계산 (메모이제이션) - 현재는 빈 배열 반환 (추후 구현)
   const posts = useMemo(() => {
-    const relatedPosts = getRelatedPosts(currentPost, limit);
-    
-    // 관련 포스트가 부족하고 fallback이 활성화된 경우 최신 포스트로 보완
-    if (relatedPosts.length < limit && fallbackToLatest) {
-      const latestPosts = getLatestPosts(limit * 2)
-        .filter(post => post.id !== currentPost.id && 
-                       !relatedPosts.some(related => related.id === post.id))
-        .slice(0, limit - relatedPosts.length);
-      
-      return [...relatedPosts, ...latestPosts];
-    }
-    
-    return relatedPosts;
+    // TODO: 실제 데이터베이스에서 관련 포스트 조회 로직 구현
+    return [];
   }, [currentPost, limit, fallbackToLatest]);
 
   // 추천 포스트가 없는 경우
@@ -340,7 +337,8 @@ export function CompactRelatedPosts({ currentPost, limit = 3 }: Pick<RelatedPost
  * 인라인 관련 포스트 컴포넌트 (본문 중간 삽입용)
  */
 export function InlineRelatedPosts({ currentPost }: Pick<RelatedPostsProps, 'currentPost'>) {
-  const relatedPosts = getRelatedPosts(currentPost, 1);
+  // TODO: 실제 데이터베이스에서 관련 포스트 조회 로직 구현
+  const relatedPosts: BlogPost[] = [];
   
   if (relatedPosts.length === 0) return null;
   

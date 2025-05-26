@@ -1,18 +1,149 @@
 /**
  * 블로그 홈페이지 컴포넌트
  * Hero 섹션, 최신 포스트, 카테고리 섹션으로 구성
+ * 실제 Supabase 데이터베이스와 연동
  */
 
 import Link from 'next/link';
-import { getLatestPosts, getCategoriesWithCount } from '@/data/mockData';
+import { createServerClient } from '@/lib/supabase-server';
 import PostCard from '@/components/blog/post-card';
+import { Database } from '@/types/database.types';
+import { BlogPost } from '@/types';
 
-export default function Home() {
+type Post = Database['public']['Tables']['posts']['Row'] & {
+  categories: Database['public']['Tables']['categories']['Row'] | null;
+};
+
+type Category = Database['public']['Tables']['categories']['Row'] & {
+  postCount: number;
+};
+
+/**
+ * Supabase Post 데이터를 BlogPost 타입으로 변환
+ */
+function transformPostToBlogPost(post: Post): BlogPost {
+  return {
+    id: post.id,
+    slug: post.slug,
+    title: post.title,
+    content: post.content,
+    excerpt: post.content.substring(0, 200) + '...', // 임시로 content에서 excerpt 생성
+    publishedAt: post.created_at,
+    updatedAt: post.updated_at,
+    author: {
+      id: post.author_id,
+      name: 'Admin', // 임시 작성자 정보
+      email: 'admin@example.com'
+    },
+    category: post.categories ? {
+      id: post.categories.id,
+      name: post.categories.name,
+      slug: post.categories.slug,
+      description: post.categories.description || undefined,
+      color: post.categories.color || '#6366f1'
+    } : {
+      id: 'uncategorized',
+      name: '미분류',
+      slug: 'uncategorized',
+      description: '카테고리가 지정되지 않은 글',
+      color: '#6b7280'
+    },
+    tags: [], // 임시로 빈 배열
+    coverImage: post.cover_image_url || '/images/default-cover.jpg',
+    images: [],
+    readingTime: Math.ceil(post.content.length / 1000), // 대략적인 읽기 시간 계산
+    viewCount: post.view_count,
+    likeCount: 0, // 임시값
+    featured: false, // 임시값
+    comments: [],
+    draft: post.status !== 'published'
+  };
+}
+
+/**
+ * 최신 게시물 조회 함수
+ */
+async function getLatestPosts(): Promise<Post[]> {
+  try {
+    const supabase = createServerClient();
+    
+    const { data: posts, error } = await supabase
+      .from('posts')
+      .select(`
+        *,
+        categories (
+          id,
+          name,
+          slug
+        )
+      `)
+      .order('created_at', { ascending: false })
+      .limit(3);
+
+    if (error) {
+      console.error('최신 게시물 조회 오류:', error);
+      return [];
+    }
+
+    return posts || [];
+  } catch (error) {
+    console.error('최신 게시물 조회 중 오류:', error);
+    return [];
+  }
+}
+
+/**
+ * 카테고리별 게시물 개수 조회 함수
+ */
+async function getCategoriesWithCount(): Promise<Category[]> {
+  try {
+    const supabase = createServerClient();
+    
+    // 카테고리 목록 조회
+    const { data: categories, error: categoriesError } = await supabase
+      .from('categories')
+      .select('*')
+      .order('created_at', { ascending: false });
+
+    if (categoriesError) {
+      console.error('카테고리 조회 오류:', categoriesError);
+      return [];
+    }
+
+    if (!categories || categories.length === 0) {
+      return [];
+    }
+
+    // 각 카테고리별 게시물 개수 조회
+    const categoriesWithCount = await Promise.all(
+      categories.map(async (category) => {
+        const { count, error: countError } = await supabase
+          .from('posts')
+          .select('*', { count: 'exact', head: true })
+          .eq('category_id', category.id);
+
+        if (countError) {
+          console.error(`카테고리 ${category.name} 게시물 개수 조회 오류:`, countError);
+          return { ...category, postCount: 0 };
+        }
+
+        return { ...category, postCount: count || 0 };
+      })
+    );
+
+    return categoriesWithCount;
+  } catch (error) {
+    console.error('카테고리 조회 중 오류:', error);
+    return [];
+  }
+}
+
+export default async function Home() {
   // 최신 포스트 3개 가져오기
-  const latestPosts = getLatestPosts(3);
+  const latestPosts = await getLatestPosts();
   
   // 카테고리별 포스트 개수 가져오기
-  const categoriesWithCount = getCategoriesWithCount();
+  const categoriesWithCount = await getCategoriesWithCount();
 
   return (
     <div id="main-content" className="py-16">
@@ -61,16 +192,34 @@ export default function Home() {
           </Link>
         </div>
 
+        {latestPosts.length > 0 ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
           {latestPosts.map((post) => (
             <PostCard
               key={post.id}
-              post={post}
+              post={transformPostToBlogPost(post)}
               showTags={true}
               maxTags={2}
             />
           ))}
         </div>
+        ) : (
+          <div className="text-center py-16 bg-muted/30 rounded-xl">
+            <div className="max-w-md mx-auto">
+              <div className="text-6xl mb-4">📝</div>
+              <h3 className="text-xl font-semibold mb-2">아직 게시물이 없습니다</h3>
+              <p className="text-muted-foreground mb-6">
+                첫 번째 게시물을 작성해서 블로그를 시작해보세요!
+              </p>
+              <Link
+                href="/admin/post/new"
+                className="inline-flex items-center justify-center rounded-lg bg-primary px-6 py-3 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-all duration-200"
+              >
+                ✍️ 첫 게시물 작성하기
+              </Link>
+            </div>
+          </div>
+        )}
       </section>
 
       {/* 카테고리 섹션 */}
@@ -80,6 +229,7 @@ export default function Home() {
           <p className="text-muted-foreground">관심 있는 주제별로 글을 찾아보세요</p>
         </div>
 
+        {categoriesWithCount.length > 0 ? (
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
           {categoriesWithCount.map((category) => (
             <Link
@@ -87,20 +237,16 @@ export default function Home() {
               href={`/categories/${category.slug}`}
               className="group relative rounded-xl border bg-card p-6 text-center hover:shadow-lg transition-all duration-300 hover:-translate-y-1"
             >
-              {/* 카테고리 색상 인디케이터 */}
-              <div 
-                className="w-4 h-4 rounded-full mx-auto mb-3"
-                style={{ backgroundColor: category.color }}
-              />
-              
               {/* 카테고리 정보 */}
               <h3 className="font-bold text-lg mb-2 group-hover:text-primary transition-colors">
                 {category.name}
               </h3>
               
+                {category.description && (
               <p className="text-sm text-muted-foreground mb-3 line-clamp-2">
                 {category.description}
               </p>
+                )}
               
               {/* 포스트 개수 */}
               <div className="text-xs font-medium px-3 py-1 rounded-full bg-muted text-muted-foreground inline-block">
@@ -112,8 +258,20 @@ export default function Home() {
             </Link>
           ))}
         </div>
+        ) : (
+          <div className="text-center py-12 bg-muted/30 rounded-xl">
+            <div className="max-w-md mx-auto">
+              <div className="text-4xl mb-4">🏷️</div>
+              <h3 className="text-lg font-semibold mb-2">카테고리가 없습니다</h3>
+              <p className="text-muted-foreground text-sm">
+                게시물을 작성할 때 카테고리를 추가할 수 있습니다.
+              </p>
+            </div>
+          </div>
+        )}
 
         {/* 전체 카테고리 보기 링크 */}
+        {categoriesWithCount.length > 0 && (
         <div className="text-center mt-8">
           <Link
             href="/categories"
@@ -123,6 +281,7 @@ export default function Home() {
             <span>→</span>
           </Link>
         </div>
+        )}
       </section>
     </div>
   );

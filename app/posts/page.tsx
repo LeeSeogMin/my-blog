@@ -5,14 +5,10 @@
 
 import Link from 'next/link';
 import { Suspense } from 'react';
-import { 
-  getPaginatedPosts, 
-  getCategoriesWithCount, 
-  getPageNumbers,
-  mockCategories 
-} from '@/data/mockData';
 import PostCard from '@/components/blog/post-card';
+import { createServerClient } from '@/lib/supabase-server';
 import type { Metadata } from 'next';
+import type { Posts, Categories } from '@/types/database.types';
 
 // 페이지 메타데이터
 export const metadata: Metadata = {
@@ -40,7 +36,7 @@ function CategoryFilter({
   currentCategory, 
   totalPosts 
 }: { 
-  categories: Array<{ id: string; name: string; slug: string; postCount: number; color?: string }>;
+  categories: Array<{ id: string; name: string; slug: string; postCount: number }>;
   currentCategory: string;
   totalPosts: number;
 }) {
@@ -113,6 +109,27 @@ function Pagination({
   totalPages: number; 
   baseUrl: string;
 }) {
+  // 페이지 번호 생성 함수
+  const getPageNumbers = (current: number, total: number) => {
+    const pages: number[] = [];
+    const maxVisible = 5;
+    
+    if (total <= maxVisible) {
+      for (let i = 1; i <= total; i++) {
+        pages.push(i);
+      }
+    } else {
+      const start = Math.max(1, current - 2);
+      const end = Math.min(total, start + maxVisible - 1);
+      
+      for (let i = start; i <= end; i++) {
+        pages.push(i);
+      }
+    }
+    
+    return pages;
+  };
+
   const pageNumbers = getPageNumbers(currentPage, totalPages);
 
   if (totalPages <= 1) return null;
@@ -164,17 +181,171 @@ async function PostsList({ searchParams }: { searchParams: any }) {
   const sort = (searchParams.sort || 'latest') as 'latest' | 'popular' | 'views';
   const search = searchParams.search || '';
 
-  // 페이지네이션된 포스트 데이터 가져오기
-  const { data: posts, pagination } = getPaginatedPosts(
-    page,
-    9, // 페이지당 9개
-    category === 'all' ? undefined : category,
-    sort,
-    search
-  );
+  // Supabase 클라이언트 생성
+  const supabase = createServerClient();
 
-  // 카테고리 목록 가져오기
-  const categoriesWithCount = getCategoriesWithCount();
+  try {
+    // 게시물 데이터 조회
+    let postsQuery = supabase
+      .from('posts')
+      .select(`
+        *,
+        categories (
+          id,
+          name,
+          slug
+        )
+      `)
+      .eq('status', 'published');
+
+    // 카테고리 필터링 (먼저 카테고리 ID 조회 후 필터링)
+    if (category !== 'all') {
+      const { data: categoryData } = await supabase
+        .from('categories')
+        .select('id')
+        .eq('slug', category)
+        .single();
+      
+      if (categoryData) {
+        postsQuery = postsQuery.eq('category_id', categoryData.id);
+      }
+    }
+
+    // 정렬 적용
+    switch (sort) {
+      case 'latest':
+        postsQuery = postsQuery.order('created_at', { ascending: false });
+        break;
+      case 'popular':
+        postsQuery = postsQuery.order('view_count', { ascending: false });
+        break;
+      case 'views':
+        postsQuery = postsQuery.order('view_count', { ascending: false });
+        break;
+      default:
+        postsQuery = postsQuery.order('created_at', { ascending: false });
+    }
+
+    // 페이지네이션 적용
+    const limit = 9;
+    const offset = (page - 1) * limit;
+    postsQuery = postsQuery.range(offset, offset + limit - 1);
+
+    const { data: posts, error: postsError } = await postsQuery;
+
+    if (postsError) {
+      console.error('게시물 조회 오류:', postsError);
+      throw postsError;
+    }
+
+    // 전체 게시물 수 조회 (페이지네이션용)
+    let countQuery = supabase
+      .from('posts')
+      .select('*', { count: 'exact', head: true })
+      .eq('status', 'published');
+
+    if (category !== 'all') {
+      const { data: categoryData } = await supabase
+        .from('categories')
+        .select('id')
+        .eq('slug', category)
+        .single();
+      
+      if (categoryData) {
+        countQuery = countQuery.eq('category_id', categoryData.id);
+      }
+    }
+
+    const { count: totalCount, error: countError } = await countQuery;
+
+    if (countError) {
+      console.error('게시물 수 조회 오류:', countError);
+      throw countError;
+    }
+
+    // 카테고리 목록 조회
+    const { data: categories, error: categoriesError } = await supabase
+      .from('categories')
+      .select('*')
+      .order('name');
+
+    if (categoriesError) {
+      console.error('카테고리 조회 오류:', categoriesError);
+      throw categoriesError;
+    }
+
+    // 각 카테고리별 게시물 수 조회
+    const categoriesWithCount = await Promise.all(
+      (categories || []).map(async (cat) => {
+        const { count } = await supabase
+          .from('posts')
+          .select('*', { count: 'exact', head: true })
+          .eq('status', 'published')
+          .eq('category_id', cat.id);
+
+        return {
+          id: cat.id,
+          name: cat.name,
+          slug: cat.slug,
+          postCount: count || 0
+        };
+      })
+    );
+
+    // 페이지네이션 정보 계산
+    const totalPages = Math.ceil((totalCount || 0) / limit);
+    const pagination = {
+      currentPage: page,
+      totalPages,
+      totalItems: totalCount || 0,
+      hasNext: page < totalPages,
+      hasPrev: page > 1
+    };
+
+    // PostCard 컴포넌트에 맞는 데이터 형식으로 변환
+    const transformedPosts = (posts || []).map(post => ({
+      id: post.id,
+      title: post.title,
+      content: post.content,
+      slug: post.slug,
+      coverImage: post.cover_image_url,
+      author: {
+        id: post.author_id,
+        name: '작성자', // Clerk에서 가져올 예정
+        avatar: '/default-avatar.png'
+      },
+      category: post.categories ? {
+        id: post.categories.id,
+        name: post.categories.name,
+        slug: post.categories.slug
+      } : null,
+      publishedAt: post.created_at,
+      readTime: Math.ceil(post.content.length / 200), // 대략적인 읽기 시간
+      tags: [], // 추후 구현
+      likes: 0, // 추후 구현
+      comments: 0, // 추후 구현
+      views: post.view_count
+    }));
+
+    return { posts: transformedPosts, pagination, categoriesWithCount };
+
+  } catch (error) {
+    console.error('데이터 조회 중 오류 발생:', error);
+    return { 
+      posts: [], 
+      pagination: { currentPage: 1, totalPages: 0, totalItems: 0, hasNext: false, hasPrev: false },
+      categoriesWithCount: []
+    };
+  }
+}
+
+async function PostsListContent({ searchParams }: { searchParams: any }) {
+  const { posts, pagination, categoriesWithCount } = await PostsList({ searchParams });
+
+  const page = parseInt(searchParams.page || '1');
+  const category = searchParams.category || 'all';
+  const sort = (searchParams.sort || 'latest') as 'latest' | 'popular' | 'views';
+  const search = searchParams.search || '';
 
   // URL 파라미터 구성
   const buildUrl = (params: Record<string, string>) => {
@@ -331,7 +502,7 @@ export default async function PostsPage({ searchParams }: PageProps) {
           <p className="text-muted-foreground">포스트를 불러오는 중...</p>
         </div>
       }>
-        <PostsList searchParams={resolvedSearchParams} />
+        <PostsListContent searchParams={resolvedSearchParams} />
       </Suspense>
     </div>
   );
