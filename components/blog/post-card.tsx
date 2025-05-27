@@ -8,20 +8,11 @@
 import Link from 'next/link';
 import Image from 'next/image';
 import { Card, CardContent } from '@/components/ui/card';
-import { type BlogPost } from '@/data/mockData';
-
-// 상대 시간 계산 함수
-function getRelativeTime(date: Date): string {
-  const now = new Date();
-  const diffInSeconds = Math.floor((now.getTime() - date.getTime()) / 1000);
-
-  if (diffInSeconds < 60) return '방금 전';
-  if (diffInSeconds < 3600) return `${Math.floor(diffInSeconds / 60)}분 전`;
-  if (diffInSeconds < 86400) return `${Math.floor(diffInSeconds / 3600)}시간 전`;
-  if (diffInSeconds < 2592000) return `${Math.floor(diffInSeconds / 86400)}일 전`;
-  if (diffInSeconds < 31536000) return `${Math.floor(diffInSeconds / 2592000)}개월 전`;
-  return `${Math.floor(diffInSeconds / 31536000)}년 전`;
-}
+import { Badge } from '@/components/ui/badge';
+import { formatDate, getRelativeTime } from '@/lib/utils';
+import { cn } from '@/lib/utils';
+import { BlogPost } from '@/types';
+import { useState } from 'react';
 import LikeButton from './like-button';
 
 /**
@@ -85,6 +76,8 @@ export function PostCard({
   className = '',
   searchQuery,
 }: PostCardProps) {
+  const [imageError, setImageError] = useState(false);
+
   // 변형에 따른 이미지 높이 설정
   const imageHeight = {
     default: 'h-48',
@@ -104,7 +97,7 @@ export function PostCard({
       <article className="relative h-full">
         {/* 커버 이미지 */}
         <div className={`relative ${imageHeight} overflow-hidden`}>
-          {post.coverImage ? (
+          {post.coverImage && !imageError ? (
             <Image
               src={post.coverImage}
               alt={post.title}
@@ -112,6 +105,7 @@ export function PostCard({
               className="object-cover transition-transform duration-300 group-hover:scale-105"
               sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
               priority={variant === 'featured'}
+              onError={() => setImageError(true)}
             />
           ) : (
             <div className="w-full h-full bg-gradient-to-br from-primary/20 to-purple-600/20 flex items-center justify-center">
@@ -239,7 +233,7 @@ export function PostCard({
                 <div className="flex items-center gap-3 text-xs text-muted-foreground">
                   <span className="flex items-center gap-1">
                     <span>👀</span>
-                    {post.viewCount.toLocaleString()}
+                    {(post.viewCount || post.views || 0).toLocaleString()}
                   </span>
                 </div>
               )}

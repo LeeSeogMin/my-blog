@@ -58,8 +58,8 @@ export default function RelatedPostsDemoPage() {
             </div>
             <div className="space-y-3 text-sm">
               <div><span className="font-medium">읽기 시간:</span> {currentPost.readingTime}분</div>
-              <div><span className="font-medium">조회수:</span> {currentPost.viewCount.toLocaleString()}</div>
-              <div><span className="font-medium">좋아요:</span> {currentPost.likeCount.toLocaleString()}</div>
+              <div><span className="font-medium">조회수:</span> {(currentPost.viewCount || 0).toLocaleString()}</div>
+              <div><span className="font-medium">좋아요:</span> {(currentPost.likeCount || 0).toLocaleString()}</div>
               <div><span className="font-medium">추천 포스트:</span> {currentPost.featured ? '✅' : '❌'}</div>
             </div>
           </div>

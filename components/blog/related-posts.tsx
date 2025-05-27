@@ -5,23 +5,11 @@
 
 'use client';
 
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
-import { type BlogPost } from '@/data/mockData';
-
-// 상대 시간 계산 함수
-function getRelativeTime(date: Date): string {
-  const now = new Date();
-  const diffInSeconds = Math.floor((now.getTime() - date.getTime()) / 1000);
-
-  if (diffInSeconds < 60) return '방금 전';
-  if (diffInSeconds < 3600) return `${Math.floor(diffInSeconds / 60)}분 전`;
-  if (diffInSeconds < 86400) return `${Math.floor(diffInSeconds / 3600)}시간 전`;
-  if (diffInSeconds < 2592000) return `${Math.floor(diffInSeconds / 86400)}일 전`;
-  if (diffInSeconds < 31536000) return `${Math.floor(diffInSeconds / 2592000)}개월 전`;
-  return `${Math.floor(diffInSeconds / 31536000)}년 전`;
-}
+import { getRelativeTime } from '@/lib/utils';
+import { BlogPost } from '@/types';
 
 /**
  * RelatedPosts 컴포넌트의 Props 인터페이스
@@ -39,6 +27,10 @@ interface RelatedPostsProps {
   fallbackToLatest?: boolean;
   /** 컴팩트한 레이아웃 사용 여부 */
   compact?: boolean;
+  /** 모든 포스트 목록 */
+  allPosts?: BlogPost[];
+  /** 최대 포스트 수 */
+  maxPosts?: number;
 }
 
 /**
@@ -50,17 +42,20 @@ interface RelatedPostCardProps {
 }
 
 function RelatedPostCard({ post, compact = false }: RelatedPostCardProps) {
+  const [imageError, setImageError] = useState(false);
+
   return (
     <article className="group relative bg-card border rounded-lg overflow-hidden hover:shadow-lg transition-all duration-300 hover:-translate-y-1">
       {/* 커버 이미지 */}
       <div className={`relative overflow-hidden ${compact ? 'h-32' : 'h-40'}`}>
-        {post.coverImage ? (
+        {post.coverImage && !imageError ? (
           <Image
             src={post.coverImage}
             alt={post.title}
             fill
             className="object-cover transition-transform duration-300 group-hover:scale-105"
             sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
+            onError={() => setImageError(true)}
           />
         ) : (
           <div className="w-full h-full bg-gradient-to-br from-primary/20 to-purple-600/20 flex items-center justify-center">
@@ -241,6 +236,8 @@ export default function RelatedPosts({
   className = "",
   fallbackToLatest = true,
   compact = false,
+  allPosts,
+  maxPosts,
 }: RelatedPostsProps) {
   // 관련 포스트 계산 (메모이제이션) - 현재는 빈 배열 반환 (추후 구현)
   const posts = useMemo(() => {

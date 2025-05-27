@@ -12,24 +12,13 @@ import RelatedPosts from '@/components/blog/related-posts';
 import LikeButton from '@/components/blog/like-button';
 import type { Metadata } from 'next';
 import type { Posts, Categories } from '@/types/database.types';
-
-// 상대 시간 계산 함수
-function getRelativeTime(dateString: string): string {
-  const date = new Date(dateString);
-  const now = new Date();
-  const diffInSeconds = Math.floor((now.getTime() - date.getTime()) / 1000);
-
-  if (diffInSeconds < 60) return '방금 전';
-  if (diffInSeconds < 3600) return `${Math.floor(diffInSeconds / 60)}분 전`;
-  if (diffInSeconds < 86400) return `${Math.floor(diffInSeconds / 3600)}시간 전`;
-  if (diffInSeconds < 2592000) return `${Math.floor(diffInSeconds / 86400)}일 전`;
-  if (diffInSeconds < 31536000) return `${Math.floor(diffInSeconds / 2592000)}개월 전`;
-  return `${Math.floor(diffInSeconds / 31536000)}년 전`;
-}
+import { getRelativeTime } from '@/lib/utils';
 
 // 페이지 props 타입 정의
 type PageProps = {
-  params: Promise<{ slug: string }>;
+  params: Promise<{
+    slug: string;
+  }>;
 };
 
 // 정적 경로 생성 함수

@@ -88,6 +88,13 @@ function CustomImage({ src, alt, title, ...props }: any) {
         title={title}
         className="rounded-lg shadow-md max-w-full h-auto"
         loading="lazy"
+        onError={(e) => {
+          e.currentTarget.style.display = 'none';
+          const placeholder = document.createElement('div');
+          placeholder.className = 'flex items-center justify-center bg-muted rounded-lg p-8 text-muted-foreground';
+          placeholder.innerHTML = '🖼️ 이미지를 불러올 수 없습니다';
+          e.currentTarget.parentNode?.insertBefore(placeholder, e.currentTarget);
+        }}
         {...props}
       />
     );
@@ -104,6 +111,13 @@ function CustomImage({ src, alt, title, ...props }: any) {
         height={400}
         className="rounded-lg shadow-md"
         style={{ width: '100%', height: 'auto' }}
+        onError={(e) => {
+          e.currentTarget.style.display = 'none';
+          const placeholder = document.createElement('div');
+          placeholder.className = 'flex items-center justify-center bg-muted rounded-lg p-8 text-muted-foreground h-40';
+          placeholder.innerHTML = '🖼️ 이미지를 불러올 수 없습니다';
+          e.currentTarget.parentNode?.insertBefore(placeholder, e.currentTarget);
+        }}
         {...props}
       />
     </div>
