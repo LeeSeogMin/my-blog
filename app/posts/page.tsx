@@ -324,7 +324,7 @@ async function PostsList({ searchParams }: { searchParams: any }) {
       tags: [], // 추후 구현
       likes: 0, // 추후 구현
       comments: 0, // 추후 구현
-      views: post.view_count
+      viewCount: post.view_count
     }));
 
     return { posts: transformedPosts, pagination, categoriesWithCount };

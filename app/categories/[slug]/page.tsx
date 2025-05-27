@@ -143,7 +143,7 @@ export default async function CategoryDetailPage({ params }: PageProps) {
       tags: [], // 추후 구현
       likes: 0, // 추후 구현
       comments: 0, // 추후 구현
-      views: post.view_count
+      viewCount: post.view_count
     }));
 
     // 카테고리 정보 변환
