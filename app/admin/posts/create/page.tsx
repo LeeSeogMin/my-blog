@@ -25,7 +25,7 @@ import Link from 'next/link';
  */
 
 interface Category {
-  id: number;
+  id: string;
   name: string;
   slug: string;
   color: string;
@@ -37,7 +37,7 @@ interface PostFormData {
   content: string;
   excerpt: string;
   cover_image_url: string;
-  category_id: number | null;
+  category_id: string | null;
   status: 'draft' | 'published';
 }
 
@@ -46,8 +46,7 @@ export default function CreatePostPage() {
   const { user, isSignedIn, isLoaded } = useUser();
 
   // 폼 상태
-  const [formData, setFormData] = useState<PostFormData>({
-    title: '',
+  const [formData, setFormData] = useState<PostFormData>({    title: '',
     slug: '',
     content: '',
     excerpt: '',
@@ -118,12 +117,11 @@ export default function CreatePostPage() {
     setSuccess('이미지가 성공적으로 업로드되었습니다!');
     setTimeout(() => setSuccess(''), 3000);
   };
-
   // 카테고리 선택 핸들러
   const handleCategoryChange = (value: string) => {
     setFormData(prev => ({
       ...prev,
-      category_id: value === 'none' ? null : parseInt(value)
+      category_id: value === 'none' ? null : value
     }));
   };
 
@@ -301,10 +299,12 @@ export default function CreatePostPage() {
                   <Loader2 className="h-4 w-4 animate-spin mr-2" />
                   <span className="text-sm text-muted-foreground">카테고리 로딩 중...</span>
                 </div>
-              ) : (
-                <Select
+              ) : (                <Select
                   value={formData.category_id?.toString() || 'none'}
-                  onValueChange={handleCategoryChange}
+                  onValueChange={(value) => setFormData(prev => ({
+                    ...prev,
+                    category_id: value === 'none' ? null : value
+                  }))}
                 >
                   <SelectTrigger>
                     <SelectValue placeholder="카테고리를 선택하세요" />
