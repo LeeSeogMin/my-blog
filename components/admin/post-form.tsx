@@ -1,623 +1,546 @@
 /**
  * 관리자용 게시물 작성/수정 폼 컴포넌트
- * ImageUpload 컴포넌트를 통합하여 커버 이미지 업로드 기능 제공
+ * ImageUpload 컴포넌트와 통합된 완전한 게시물 관리 폼
  */
 
-'use client'
+'use client';
 
-import React, { useState, useEffect } from 'react'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Textarea } from '@/components/ui/textarea'
-import { Label } from '@/components/ui/label'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Alert, AlertDescription } from '@/components/ui/alert'
-import { 
-  Select, 
-  SelectContent, 
-  SelectItem, 
-  SelectTrigger, 
-  SelectValue 
-} from '@/components/ui/select'
-import { Save, X, AlertCircle } from 'lucide-react'
-import ImageUpload from '@/components/image-upload'
+import React, { useState, useEffect } from 'react';
+import { Save, X, FileText, Image as ImageIcon, Tag, Type } from 'lucide-react';
+import ImageUpload from '@/components/image-upload';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import { Label } from '@/components/ui/label';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { Badge } from '@/components/ui/badge';
 
-// =====================================================
+// ========================================
 // 타입 정의
-// =====================================================
+// ========================================
 
 /**
  * 게시물 폼 데이터 타입
  */
-interface PostFormData {
-  title: string
-  content: string
-  slug: string
-  coverImageUrl: string
-  categoryId: string
+export interface PostFormData {
+  title: string;
+  content: string;
+  slug: string;
+  coverImageUrl?: string;
+  categoryId?: string;
 }
 
 /**
- * 카테고리 타입 (임시 - 실제로는 데이터베이스에서 가져올 예정)
+ * 카테고리 타입
  */
-interface Category {
-  id: string
-  name: string
-  slug: string
+export interface Category {
+  id: string;
+  name: string;
+  description?: string;
 }
 
 /**
  * PostForm 컴포넌트 Props
  */
 interface PostFormProps {
-  /** 초기 데이터 (수정 시 사용) */
-  initialData?: Partial<PostFormData>
+  /** 초기 게시물 데이터 (수정 시 사용) */
+  initialData?: Partial<PostFormData>;
+  /** 사용 가능한 카테고리 목록 */
+  categories?: Category[];
   /** 폼 제출 핸들러 */
-  onSubmit?: (data: PostFormData) => void
+  onSubmit: (data: PostFormData) => void;
   /** 취소 핸들러 */
-  onCancel?: () => void
-  /** 로딩 상태 */
-  isLoading?: boolean
-  /** 추가 CSS 클래스 */
-  className?: string
+  onCancel: () => void;
+  /** 제출 중 상태 */
+  isSubmitting?: boolean;
+  /** 수정 모드 여부 */
+  isEditing?: boolean;
 }
 
-/**
- * 폼 검증 오류 타입
- */
-interface FormErrors {
-  title?: string
-  content?: string
-  slug?: string
-}
-
-// =====================================================
-// 카테고리 데이터 (실제 API에서 가져옴)
-// =====================================================
-
-// =====================================================
+// ========================================
 // 유틸리티 함수
-// =====================================================
+// ========================================
 
 /**
- * 제목을 URL 친화적인 slug로 변환
+ * 제목에서 안전한 slug 생성 함수
+ * 한글 지원, 특수문자 제거, 하이픈 정규화
+ * 
+ * @param title - 원본 제목
+ * @returns 생성된 slug
  */
 function generateSlug(title: string): string {
   return title
     .toLowerCase()
     .trim()
-    .replace(/[^\w\s-]/g, '') // 특수문자 제거
-    .replace(/[\s_-]+/g, '-') // 공백을 하이픈으로
-    .replace(/^-+|-+$/g, '') // 앞뒤 하이픈 제거
+    .replace(/[^a-z0-9가-힣\s\-]/g, '') // 안전한 문자만 허용 (하이픈 이스케이프)
+    .replace(/\s+/g, '-') // 공백을 하이픈으로
+    .replace(/-+/g, '-') // 연속 하이픈 제거
+    .replace(/^-|-$/g, '') // 앞뒤 하이픈 제거
+    .substring(0, 100); // 길이 제한
 }
 
 /**
- * 폼 데이터 검증
+ * 폼 데이터 검증 함수
+ * 
+ * @param data - 검증할 폼 데이터
+ * @returns 검증 결과와 에러 메시지
  */
-function validateForm(data: PostFormData): FormErrors {
-  const errors: FormErrors = {}
+function validateFormData(data: PostFormData): { isValid: boolean; errors: string[] } {
+  const errors: string[] = [];
 
   if (!data.title.trim()) {
-    errors.title = '제목을 입력해주세요'
-  } else if (data.title.length < 2) {
-    errors.title = '제목은 2글자 이상이어야 합니다'
-  } else if (data.title.length > 100) {
-    errors.title = '제목은 100글자 이하여야 합니다'
+    errors.push('제목을 입력해주세요.');
   }
 
   if (!data.content.trim()) {
-    errors.content = '내용을 입력해주세요'
-  } else if (data.content.length < 10) {
-    errors.content = '내용은 10글자 이상이어야 합니다'
+    errors.push('내용을 입력해주세요.');
   }
 
   if (!data.slug.trim()) {
-    errors.slug = 'URL 슬러그가 생성되지 않았습니다'
+    errors.push('슬러그가 생성되지 않았습니다.');
   }
 
-  return errors
+  return {
+    isValid: errors.length === 0,
+    errors
+  };
 }
 
-// =====================================================
+// ========================================
 // 메인 컴포넌트
-// =====================================================
+// ========================================
 
 /**
  * 게시물 작성/수정 폼 컴포넌트
  * 
- * 사용법:
- * ```tsx
- * <PostForm 
- *   onSubmit={(data) => console.log('제출된 데이터:', data)}
- *   onCancel={() => router.back()}
- * />
- * ```
+ * @param props - PostFormProps
+ * @returns JSX.Element
  */
 export default function PostForm({
-  initialData,
+  initialData = {},
+  categories = [],
   onSubmit,
   onCancel,
-  isLoading = false,
-  className = ''
+  isSubmitting = false,
+  isEditing = false
 }: PostFormProps) {
-  // =====================================================
+  // ========================================
   // 상태 관리
-  // =====================================================
+  // ========================================
 
   const [formData, setFormData] = useState<PostFormData>({
-    title: initialData?.title || '',
-    content: initialData?.content || '',
-    slug: initialData?.slug || '',
-    coverImageUrl: initialData?.coverImageUrl || '',
-    categoryId: initialData?.categoryId || 'none'
-  })
+    title: initialData.title || '',
+    content: initialData.content || '',
+    slug: initialData.slug || '',
+    coverImageUrl: initialData.coverImageUrl || '',
+    categoryId: initialData.categoryId || ''
+  });
 
-  const [errors, setErrors] = useState<FormErrors>({})
-  const [isSubmitting, setIsSubmitting] = useState(false)
-  const [categories, setCategories] = useState<Category[]>([])
-  const [isLoadingCategories, setIsLoadingCategories] = useState(true)
-  const [isCheckingSlug, setIsCheckingSlug] = useState(false)
-  const [slugStatus, setSlugStatus] = useState<'available' | 'taken' | 'checking' | null>(null)
+  const [errors, setErrors] = useState<string[]>([]);
+  const [isSlugManuallyEdited, setIsSlugManuallyEdited] = useState(false);
 
-  // =====================================================
-  // 이펙트
-  // =====================================================
+  // ========================================
+  // 초기 데이터 설정
+  // ========================================
 
-  /**
-   * 컴포넌트 마운트 시 카테고리 목록 로드
-   */
   useEffect(() => {
-    const loadCategories = async () => {
-      try {
-        const response = await fetch('/api/categories')
-        if (response.ok) {
-          const data = await response.json()
-          setCategories(data.categories || [])
-        } else {
-          console.error('카테고리 로드 실패:', response.statusText)
-        }
-      } catch (error) {
-        console.error('카테고리 로드 중 오류:', error)
-      } finally {
-        setIsLoadingCategories(false)
-      }
+    // 초기 데이터가 있고 slug가 있으면 수동 편집된 것으로 간주
+    if (initialData.slug) {
+      setIsSlugManuallyEdited(true);
     }
+  }, [initialData.slug]);
 
-    loadCategories()
-  }, [])
-
-  /**
-   * 제목 변경 시 자동으로 slug 생성 (서버 API 사용)
-   */
-  useEffect(() => {
-    const generateSlugFromTitle = async () => {
-      if (formData.title.trim()) {
-        try {
-          const response = await fetch('/api/posts/generate-slug', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ title: formData.title }),
-          });
-
-          if (response.ok) {
-            const data = await response.json();
-            setFormData(prev => ({ ...prev, slug: data.slug }));
-          } else {
-            // 서버 API 실패 시 클라이언트 사이드 생성으로 폴백
-            const newSlug = generateSlug(formData.title);
-            setFormData(prev => ({ ...prev, slug: newSlug }));
-          }
-        } catch (error) {
-          console.error('슬러그 생성 오류:', error);
-          // 오류 시 클라이언트 사이드 생성으로 폴백
-          const newSlug = generateSlug(formData.title);
-          setFormData(prev => ({ ...prev, slug: newSlug }));
-        }
-      }
-    };
-
-    const timeoutId = setTimeout(generateSlugFromTitle, 500); // 디바운싱
-    return () => clearTimeout(timeoutId);
-  }, [formData.title])
-
-  // =====================================================
-  // 유틸리티 함수
-  // =====================================================
-
-  /**
-   * 슬러그 중복 확인
-   */
-  const checkSlugAvailability = async (slug: string) => {
-    if (!slug.trim()) return;
-    
-    setIsCheckingSlug(true);
-    setSlugStatus('checking');
-    
-    try {
-      const response = await fetch('/api/posts');
-      if (response.ok) {
-        const data = await response.json();
-        const existingSlugs = data.posts.map((post: any) => post.slug);
-        const isAvailable = !existingSlugs.includes(slug);
-        setSlugStatus(isAvailable ? 'available' : 'taken');
-      }
-    } catch (error) {
-      console.error('슬러그 중복 확인 오류:', error);
-      setSlugStatus(null);
-    } finally {
-      setIsCheckingSlug(false);
-    }
-  };
-
-  /**
-   * 슬러그 수동 재생성
-   */
-  const regenerateSlug = async () => {
-    if (!formData.title.trim()) return;
-    
-    try {
-      const response = await fetch('/api/posts/generate-slug', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ title: formData.title }),
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        setFormData(prev => ({ ...prev, slug: data.slug }));
-        setSlugStatus('available');
-      }
-    } catch (error) {
-      console.error('슬러그 재생성 오류:', error);
-    }
-  };
-
-  // =====================================================
+  // ========================================
   // 이벤트 핸들러
-  // =====================================================
+  // ========================================
 
   /**
-   * 입력 필드 변경 핸들러
+   * 제목 변경 핸들러
+   * 제목 변경 시 자동으로 slug 생성 (수동 편집되지 않은 경우)
    */
-  const handleInputChange = (field: keyof PostFormData, value: string) => {
-    setFormData(prev => ({ ...prev, [field]: value }))
+  const handleTitleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const newTitle = e.target.value;
     
-    // 해당 필드의 에러 제거
-    if (errors[field as keyof FormErrors]) {
-      setErrors(prev => ({ ...prev, [field]: undefined }))
+    setFormData(prev => ({
+      ...prev,
+      title: newTitle,
+      // slug가 수동으로 편집되지 않은 경우에만 자동 생성
+      slug: isSlugManuallyEdited ? prev.slug : generateSlug(newTitle)
+    }));
+
+    // 에러 초기화
+    if (errors.length > 0) {
+      setErrors([]);
     }
-  }
+  };
+
+  /**
+   * slug 변경 핸들러
+   * 사용자가 직접 slug를 편집하는 경우
+   */
+  const handleSlugChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const newSlug = e.target.value;
+    
+    setFormData(prev => ({
+      ...prev,
+      slug: newSlug
+    }));
+
+    // slug가 수동으로 편집되었음을 표시
+    setIsSlugManuallyEdited(true);
+
+    // 에러 초기화
+    if (errors.length > 0) {
+      setErrors([]);
+    }
+  };
+
+  /**
+   * 내용 변경 핸들러
+   */
+  const handleContentChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    setFormData(prev => ({
+      ...prev,
+      content: e.target.value
+    }));
+
+    // 에러 초기화
+    if (errors.length > 0) {
+      setErrors([]);
+    }
+  };
+
+  /**
+   * 카테고리 변경 핸들러
+   * "none" 값을 빈 문자열로 변환하여 처리
+   */
+  const handleCategoryChange = (value: string) => {
+    setFormData(prev => ({
+      ...prev,
+      categoryId: value === 'none' ? '' : value
+    }));
+  };
 
   /**
    * 이미지 업로드 완료 핸들러
    */
   const handleImageUploaded = (url: string) => {
-    setFormData(prev => ({ ...prev, coverImageUrl: url }))
-  }
+    setFormData(prev => ({
+      ...prev,
+      coverImageUrl: url
+    }));
+  };
 
   /**
-   * 카테고리 선택 핸들러
+   * 이미지 제거 핸들러
    */
-  const handleCategoryChange = (value: string) => {
-    setFormData(prev => ({ ...prev, categoryId: value }))
-  }
+  const handleImageRemove = () => {
+    setFormData(prev => ({
+      ...prev,
+      coverImageUrl: ''
+    }));
+  };
 
   /**
    * 폼 제출 핸들러
    */
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+
+    // 폼 데이터 검증
+    const validation = validateFormData(formData);
     
-    // 검증
-    const validationErrors = validateForm(formData)
-    if (Object.keys(validationErrors).length > 0) {
-      setErrors(validationErrors)
-      return
+    if (!validation.isValid) {
+      setErrors(validation.errors);
+      return;
     }
 
-    setIsSubmitting(true)
-
-    try {
-      // 카테고리 "none" 값을 빈 문자열로 변환
-      const submitData: PostFormData = {
-        ...formData,
-        categoryId: formData.categoryId === 'none' ? '' : formData.categoryId
-      }
-
-      // 콘솔에 데이터 출력 (실제 저장은 다음 단계)
-      console.log('=== 게시물 폼 제출 데이터 ===')
-      console.log('제목:', submitData.title)
-      console.log('슬러그:', submitData.slug)
-      console.log('내용 길이:', submitData.content.length, '글자')
-      console.log('커버 이미지:', submitData.coverImageUrl || '없음')
-      console.log('카테고리 ID:', submitData.categoryId || '없음')
-      console.log('전체 데이터:', submitData)
-
-      // 부모 컴포넌트의 onSubmit 호출
-      if (onSubmit) {
-        await onSubmit(submitData)
-      }
-
-      // 성공 알림 (임시)
-      alert('게시물 데이터가 콘솔에 출력되었습니다!')
-
-    } catch (error) {
-      console.error('폼 제출 오류:', error)
-      alert('폼 제출 중 오류가 발생했습니다.')
-    } finally {
-      setIsSubmitting(false)
-    }
-  }
+    // 에러 초기화 후 제출
+    setErrors([]);
+    onSubmit(formData);
+  };
 
   /**
-   * 취소 핸들러
+   * slug 재생성 핸들러
    */
-  const handleCancel = () => {
-    if (onCancel) {
-      onCancel()
-    } else {
-      // 기본 동작: 폼 초기화
-      setFormData({
-        title: '',
-        content: '',
-        slug: '',
-        coverImageUrl: '',
-        categoryId: 'none'
-      })
-      setErrors({})
-    }
-  }
+  const handleRegenerateSlug = () => {
+    const newSlug = generateSlug(formData.title);
+    setFormData(prev => ({
+      ...prev,
+      slug: newSlug
+    }));
+    setIsSlugManuallyEdited(false);
+  };
 
-  // =====================================================
-  // 렌더링 도우미
-  // =====================================================
+  // ========================================
+  // 렌더링 헬퍼 함수
+  // ========================================
 
   /**
-   * 에러가 있는지 확인
+   * 카테고리 선택값 반환
+   * 빈 문자열인 경우 "none"으로 변환
    */
-  const hasErrors = Object.keys(errors).length > 0
+  const getCategorySelectValue = () => {
+    return formData.categoryId || 'none';
+  };
 
-  /**
-   * 제출 가능한지 확인
-   */
-  const canSubmit = formData.title.trim() && formData.content.trim() && !hasErrors
-
-  // =====================================================
+  // ========================================
   // 메인 렌더링
-  // =====================================================
+  // ========================================
 
   return (
-    <div className={`max-w-4xl mx-auto ${className}`}>
-      <form onSubmit={handleSubmit} className="space-y-6">
-        {/* 폼 헤더 */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Save className="w-5 h-5" />
-              {initialData ? '게시물 수정' : '새 게시물 작성'}
-            </CardTitle>
-          </CardHeader>
-        </Card>
+    <div className="max-w-4xl mx-auto p-6 space-y-8">
+      {/* 폼 헤더 */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold text-gray-900">
+            {isEditing ? '게시물 수정' : '새 게시물 작성'}
+          </h1>
+          <p className="text-gray-600 mt-2">
+            {isEditing ? '게시물 정보를 수정하세요.' : '새로운 블로그 게시물을 작성하세요.'}
+          </p>
+        </div>
+        
+        {/* 상태 표시 */}
+        {isSubmitting && (
+          <Badge variant="secondary" className="animate-pulse">
+            저장 중...
+          </Badge>
+        )}
+      </div>
 
-        {/* 기본 정보 */}
+      {/* 에러 메시지 */}
+      {errors.length > 0 && (
+        <Card className="border-red-200 bg-red-50">
+          <CardContent className="pt-6">
+            <div className="flex items-start space-x-2">
+              <X className="w-5 h-5 text-red-500 mt-0.5 flex-shrink-0" />
+              <div>
+                <h4 className="font-medium text-red-800 mb-2">다음 오류를 수정해주세요:</h4>
+                <ul className="list-disc list-inside space-y-1 text-red-700">
+                  {errors.map((error, index) => (
+                    <li key={index} className="text-sm">{error}</li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      <form onSubmit={handleSubmit} className="space-y-8">
+        {/* 기본 정보 섹션 */}
         <Card>
           <CardHeader>
-            <CardTitle>기본 정보</CardTitle>
+            <CardTitle className="flex items-center space-x-2">
+              <Type className="w-5 h-5" />
+              <span>기본 정보</span>
+            </CardTitle>
+            <CardDescription>
+              게시물의 제목과 URL 정보를 설정하세요
+            </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4">
-            {/* 제목 */}
+          <CardContent className="space-y-6">
+            {/* 제목 입력 */}
             <div className="space-y-2">
-              <Label htmlFor="title">제목 *</Label>
+              <Label htmlFor="title" className="text-sm font-medium">
+                제목 <span className="text-red-500">*</span>
+              </Label>
               <Input
                 id="title"
                 type="text"
-                placeholder="게시물 제목을 입력하세요"
                 value={formData.title}
-                onChange={(e) => handleInputChange('title', e.target.value)}
-                className={errors.title ? 'border-red-500' : ''}
-                disabled={isLoading || isSubmitting}
+                onChange={handleTitleChange}
+                placeholder="게시물 제목을 입력하세요"
+                disabled={isSubmitting}
+                className="text-lg"
               />
-              {errors.title && (
-                <p className="text-sm text-red-600 flex items-center gap-1">
-                  <AlertCircle className="w-4 h-4" />
-                  {errors.title}
-                </p>
-              )}
+              <p className="text-xs text-gray-500">
+                제목을 입력하면 URL용 슬러그가 자동으로 생성됩니다
+              </p>
             </div>
 
-            {/* URL 슬러그 */}
+            {/* Slug 입력 */}
             <div className="space-y-2">
-              <Label htmlFor="slug">URL 슬러그</Label>
-              <div className="flex gap-2">
-                <Input
-                  id="slug"
-                  type="text"
-                  placeholder="url-slug"
-                  value={formData.slug}
-                  onChange={(e) => {
-                    handleInputChange('slug', e.target.value);
-                    setSlugStatus(null);
-                  }}
-                  onBlur={() => checkSlugAvailability(formData.slug)}
-                  className={errors.slug ? 'border-red-500' : ''}
-                  disabled={isLoading || isSubmitting}
-                />
+              <div className="flex items-center justify-between">
+                <Label htmlFor="slug" className="text-sm font-medium">
+                  URL 슬러그 <span className="text-red-500">*</span>
+                </Label>
                 <Button
                   type="button"
                   variant="outline"
                   size="sm"
-                  onClick={regenerateSlug}
-                  disabled={!formData.title.trim() || isLoading || isSubmitting}
-                  className="whitespace-nowrap"
+                  onClick={handleRegenerateSlug}
+                  disabled={isSubmitting || !formData.title}
+                  className="text-xs"
                 >
                   재생성
                 </Button>
               </div>
-              
-              {/* 슬러그 상태 표시 */}
-              {slugStatus === 'checking' && (
-                <p className="text-sm text-blue-600 flex items-center gap-1">
-                  <div className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
-                  중복 확인 중...
-                </p>
-              )}
-              {slugStatus === 'available' && (
-                <p className="text-sm text-green-600 flex items-center gap-1">
-                  ✅ 사용 가능한 슬러그입니다
-                </p>
-              )}
-              {slugStatus === 'taken' && (
-                <p className="text-sm text-red-600 flex items-center gap-1">
-                  ❌ 이미 사용 중인 슬러그입니다
-                </p>
-              )}
-              
-              {formData.slug && (
-                <p className="text-sm text-gray-500">
-                  URL: /posts/{formData.slug}
-                </p>
-              )}
-              {errors.slug && (
-                <p className="text-sm text-red-600 flex items-center gap-1">
-                  <AlertCircle className="w-4 h-4" />
-                  {errors.slug}
-                </p>
-              )}
+              <Input
+                id="slug"
+                type="text"
+                value={formData.slug}
+                onChange={handleSlugChange}
+                placeholder="url-slug-example"
+                disabled={isSubmitting}
+                className="font-mono text-sm"
+              />
+              <p className="text-xs text-gray-500">
+                게시물의 URL에 사용됩니다: <code className="bg-gray-100 px-1 rounded">/posts/{formData.slug || 'slug'}</code>
+              </p>
             </div>
+          </CardContent>
+        </Card>
 
-            {/* 카테고리 선택 */}
+        {/* 커버 이미지 섹션 */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center space-x-2">
+              <ImageIcon className="w-5 h-5" />
+              <span>커버 이미지</span>
+            </CardTitle>
+            <CardDescription>
+              게시물의 대표 이미지를 업로드하세요 (선택사항)
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <ImageUpload
+              onImageUploaded={handleImageUploaded}
+              initialImage={formData.coverImageUrl}
+              className="max-w-lg"
+            />
+            {formData.coverImageUrl && (
+              <div className="mt-4 flex items-center justify-between p-3 bg-green-50 rounded-lg">
+                <div className="flex items-center space-x-2">
+                  <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                  <span className="text-sm text-green-700 font-medium">커버 이미지가 설정되었습니다</span>
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={handleImageRemove}
+                  disabled={isSubmitting}
+                  className="text-red-600 hover:text-red-700"
+                >
+                  제거
+                </Button>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* 카테고리 섹션 */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center space-x-2">
+              <Tag className="w-5 h-5" />
+              <span>카테고리</span>
+            </CardTitle>
+            <CardDescription>
+              게시물의 카테고리를 선택하세요 (선택사항)
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
             <div className="space-y-2">
-              <Label htmlFor="category">카테고리</Label>
+              <Label htmlFor="category" className="text-sm font-medium">
+                카테고리
+              </Label>
               <Select
-                value={formData.categoryId}
+                value={getCategorySelectValue()}
                 onValueChange={handleCategoryChange}
-                disabled={isLoading || isSubmitting || isLoadingCategories}
+                disabled={isSubmitting}
               >
                 <SelectTrigger>
-                  <SelectValue placeholder={
-                    isLoadingCategories ? "카테고리 로딩 중..." : "카테고리를 선택하세요"
-                  } />
+                  <SelectValue placeholder="카테고리를 선택하세요" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="none">카테고리 없음</SelectItem>
                   {categories.map((category) => (
                     <SelectItem key={category.id} value={category.id}>
                       {category.name}
+                      {category.description && (
+                        <span className="text-gray-500 ml-2">- {category.description}</span>
+                      )}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
-              {isLoadingCategories && (
-                <p className="text-sm text-gray-500">카테고리 목록을 불러오는 중...</p>
-              )}
+              <p className="text-xs text-gray-500">
+                카테고리를 선택하지 않으면 '일반' 카테고리로 분류됩니다
+              </p>
             </div>
           </CardContent>
         </Card>
 
-        {/* 커버 이미지 */}
+        {/* 내용 섹션 */}
         <Card>
           <CardHeader>
-            <CardTitle>커버 이미지</CardTitle>
+            <CardTitle className="flex items-center space-x-2">
+              <FileText className="w-5 h-5" />
+              <span>게시물 내용</span>
+            </CardTitle>
+            <CardDescription>
+              게시물의 본문 내용을 작성하세요
+            </CardDescription>
           </CardHeader>
           <CardContent>
-            <ImageUpload
-              onImageUploaded={handleImageUploaded}
-              initialImage={formData.coverImageUrl}
-              className="w-full"
-            />
-            {formData.coverImageUrl && (
-              <div className="mt-4 p-3 bg-green-50 rounded-lg">
-                <p className="text-sm text-green-800">
-                  ✅ 커버 이미지가 설정되었습니다
-                </p>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* 게시물 내용 */}
-        <Card>
-          <CardHeader>
-            <CardTitle>게시물 내용</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="content">내용 *</Label>
+              <Label htmlFor="content" className="text-sm font-medium">
+                내용 <span className="text-red-500">*</span>
+              </Label>
               <Textarea
                 id="content"
-                placeholder="게시물 내용을 입력하세요..."
                 value={formData.content}
-                onChange={(e) => handleInputChange('content', e.target.value)}
-                className={`min-h-[300px] ${errors.content ? 'border-red-500' : ''}`}
-                disabled={isLoading || isSubmitting}
+                onChange={handleContentChange}
+                placeholder="게시물 내용을 작성하세요..."
+                disabled={isSubmitting}
+                rows={12}
+                className="resize-none"
               />
-              <div className="flex justify-between text-sm text-gray-500">
-                <span>{formData.content.length} 글자</span>
-                <span>최소 10글자 이상</span>
-              </div>
-              {errors.content && (
-                <p className="text-sm text-red-600 flex items-center gap-1">
-                  <AlertCircle className="w-4 h-4" />
-                  {errors.content}
+              <div className="flex justify-between items-center">
+                <p className="text-xs text-gray-500">
+                  Markdown 문법을 사용할 수 있습니다
                 </p>
-              )}
+                <p className="text-xs text-gray-500">
+                  {formData.content.length} 글자
+                </p>
+              </div>
             </div>
           </CardContent>
         </Card>
-
-        {/* 전체 에러 메시지 */}
-        {hasErrors && (
-          <Alert variant="destructive">
-            <AlertCircle className="h-4 w-4" />
-            <AlertDescription>
-              입력 정보를 확인해주세요. 필수 항목을 모두 올바르게 입력해야 합니다.
-            </AlertDescription>
-          </Alert>
-        )}
 
         {/* 액션 버튼 */}
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex gap-4 justify-end">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={handleCancel}
-                disabled={isLoading || isSubmitting}
-                className="flex items-center gap-2"
-              >
-                <X className="w-4 h-4" />
-                취소
-              </Button>
-              
-              <Button
-                type="submit"
-                disabled={!canSubmit || isLoading || isSubmitting}
-                className="flex items-center gap-2"
-              >
-                <Save className="w-4 h-4" />
-                {isSubmitting ? '저장 중...' : (initialData ? '수정하기' : '저장하기')}
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* 폼 데이터 미리보기 (개발용) */}
-        <Card className="bg-gray-50">
-          <CardHeader>
-            <CardTitle className="text-sm">폼 데이터 미리보기 (개발용)</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <pre className="text-xs bg-white p-3 rounded border overflow-auto">
-              {JSON.stringify(formData, null, 2)}
-            </pre>
-          </CardContent>
-        </Card>
+        <div className="flex items-center justify-end space-x-4 pt-6 border-t">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={onCancel}
+            disabled={isSubmitting}
+            className="min-w-[100px]"
+          >
+            <X className="w-4 h-4 mr-2" />
+            취소
+          </Button>
+          
+          <Button
+            type="submit"
+            disabled={isSubmitting}
+            className="min-w-[100px]"
+          >
+            <Save className="w-4 h-4 mr-2" />
+            {isSubmitting ? '저장 중...' : isEditing ? '수정 완료' : '게시물 저장'}
+          </Button>
+        </div>
       </form>
     </div>
-  )
+  );
 } 

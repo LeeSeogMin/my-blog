@@ -1,14 +1,23 @@
 /**
- * 블로그 포스트 목록 페이지
+ * 블로그 포스트 목록 페이지 (2025년 새로운 Third-Party Auth 방식)
  * 모든 블로그 포스트를 필터링, 정렬, 페이지네이션과 함께 표시
+ * 실제 Supabase 데이터베이스와 연동
  */
 
 import Link from 'next/link';
 import { Suspense } from 'react';
 import PostCard from '@/components/blog/post-card';
-import { createServerClient } from '@/lib/supabase-server';
+import { createServerSupabaseClient } from '@/lib/supabase-server';
 import type { Metadata } from 'next';
-import type { Posts, Categories } from '@/types/database.types';
+import { Database } from '@/types/database.types';
+
+// 타입 정의
+type Post = Database['public']['Tables']['posts']['Row'];
+type Category = Database['public']['Tables']['categories']['Row'];
+
+type PostWithCategory = Post & {
+  categories?: Category | null;
+};
 
 // 페이지 메타데이터
 export const metadata: Metadata = {
@@ -29,6 +38,16 @@ type PageProps = {
     search?: string;
   }>;
 };
+
+// 날짜 포맷팅 함수
+function formatDate(dateString: string): string {
+  const date = new Date(dateString);
+  return date.toLocaleDateString('ko-KR', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric'
+  });
+}
 
 // 카테고리 필터 컴포넌트
 function CategoryFilter({ 
@@ -174,26 +193,40 @@ function Pagination({
   );
 }
 
-// 메인 포스트 목록 컴포넌트
+// 메인 포스트 목록 데이터 조회 함수
 async function PostsList({ searchParams }: { searchParams: any }) {
+  // Supabase 클라이언트 생성
+  const supabase = createServerSupabaseClient();
   const page = parseInt(searchParams.page || '1');
   const category = searchParams.category || 'all';
   const sort = (searchParams.sort || 'latest') as 'latest' | 'popular' | 'views';
   const search = searchParams.search || '';
 
-  // Supabase 클라이언트 생성
-  const supabase = createServerClient();
-
   try {
+    console.log('=== 게시물 목록 페이지: 데이터 조회 시작 ===');
+    console.log('페이지:', page, '카테고리:', category, '정렬:', sort);
+
+    // 2025년 새로운 Third-Party Auth 방식 Supabase 클라이언트 생성
+    const supabase = await createServerSupabaseClient();
+
     // 게시물 데이터 조회
     let postsQuery = supabase
       .from('posts')
       .select(`
-        *,
+        id,
+        title,
+        content,
+        slug,
+        excerpt,
+        cover_image_url,
+        view_count,
+        created_at,
+        author_id,
         categories (
           id,
           name,
-          slug
+          slug,
+          color
         )
       `)
       .eq('status', 'published');
@@ -238,6 +271,8 @@ async function PostsList({ searchParams }: { searchParams: any }) {
       throw postsError;
     }
 
+    console.log(`✅ 게시물 ${posts?.length || 0}개 조회 성공`);
+
     // 전체 게시물 수 조회 (페이지네이션용)
     let countQuery = supabase
       .from('posts')
@@ -274,6 +309,8 @@ async function PostsList({ searchParams }: { searchParams: any }) {
       throw categoriesError;
     }
 
+    console.log(`✅ 카테고리 ${categories?.length || 0}개 조회 성공`);
+
     // 각 카테고리별 게시물 수 조회
     const categoriesWithCount = await Promise.all(
       (categories || []).map(async (cat) => {
@@ -302,31 +339,66 @@ async function PostsList({ searchParams }: { searchParams: any }) {
       hasPrev: page > 1
     };
 
+    // Category 타입의 빈 객체
+    const EMPTY_CATEGORY: Category = {
+      id: '',
+      name: '',
+      slug: '',
+      description: null,
+      color: '',
+      created_at: '',
+      updated_at: '',
+    };
+
     // PostCard 컴포넌트에 맞는 데이터 형식으로 변환
     const transformedPosts = (posts || []).map(post => ({
       id: post.id,
       title: post.title,
       content: post.content,
       slug: post.slug,
+      excerpt: post.excerpt || '',
       coverImage: post.cover_image_url,
       author: {
         id: post.author_id,
         name: '작성자', // Clerk에서 가져올 예정
         avatar: '/default-avatar.png'
       },
-      category: post.categories ? {
-        id: post.categories.id,
-        name: post.categories.name,
-        slug: post.categories.slug
-      } : null,
+      category: Array.isArray(post.categories)
+        ? (post.categories[0]
+            ? {
+                id: (post.categories[0] as any).id,
+                name: (post.categories[0] as any).name,
+                slug: (post.categories[0] as any).slug,
+                color: (post.categories[0] as any).color,
+                description: (post.categories[0] as any).description ?? null,
+                created_at: (post.categories[0] as any).created_at ?? '',
+                updated_at: (post.categories[0] as any).updated_at ?? '',
+              }
+            : EMPTY_CATEGORY)
+        : post.categories
+        ? {
+            id: (post.categories as any).id,
+            name: (post.categories as any).name,
+            slug: (post.categories as any).slug,
+            color: (post.categories as any).color,
+            description: (post.categories as any).description ?? null,
+            created_at: (post.categories as any).created_at ?? '',
+            updated_at: (post.categories as any).updated_at ?? '',
+          }
+        : EMPTY_CATEGORY,
       publishedAt: post.created_at,
-      readTime: Math.ceil(post.content.length / 200), // 대략적인 읽기 시간
+      readTime: Math.ceil((post.content?.length || 0) / 200), // 대략적인 읽기 시간
       tags: [], // 추후 구현
       likes: 0, // 추후 구현
-      comments: 0, // 추후 구현
-      viewCount: post.view_count
+      comments: [], // 추후 구현 - Comment[] 타입으로 수정
+      viewCount: post.view_count || 0,
+      // BlogPost 타입 필수 필드 추가
+      readingTime: Math.ceil((post.content?.length || 0) / 200),
+      likeCount: 0,
+      featured: false,
     }));
 
+    console.log('✅ 게시물 목록 데이터 조회 완료');
     return { posts: transformedPosts, pagination, categoriesWithCount };
 
   } catch (error) {

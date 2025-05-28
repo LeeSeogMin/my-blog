@@ -1,111 +1,120 @@
-import { clerkMiddleware, createRouteMatcher } from '@clerk/nextjs/server'
+import { clerkMiddleware } from '@clerk/nextjs/server'
 import { NextResponse } from 'next/server'
 
 /**
- * 보호된 API 라우트를 정의하는 매처
- * 댓글 작성 API와 향후 관리자 기능은 인증이 필요합니다.
- */
-const isProtectedApiRoute = createRouteMatcher([
-  '/api/comments/(.*)',      // 댓글 작성/수정/삭제 API
-  '/api/admin/(.*)',         // 관리자 전용 API (향후 확장)
-])
-
-/**
- * 관리자 전용 페이지를 정의하는 매처 (향후 확장용)
- */
-const isAdminRoute = createRouteMatcher([
-  '/admin/(.*)',             // 관리자 대시보드 페이지
-])
-
-/**
- * 공개적으로 접근 가능한 라우트를 정의하는 매처
- * 모든 블로그 콘텐츠는 인증 없이 접근 가능합니다.
- */
-const isPublicRoute = createRouteMatcher([
-  '/',                       // 홈페이지
-  '/posts/(.*)',             // 모든 블로그 포스트
-  '/categories/(.*)',        // 카테고리 페이지
-  '/search',                 // 검색 페이지
-  '/demo/(.*)',              // 데모 페이지
-  '/api/search',             // 검색 API
-  '/api/posts/(.*)',         // 포스트 조회 API
-])
-
-/**
- * Clerk 미들웨어 설정
+ * Clerk 미들웨어 설정 (2025년 새로운 방식)
  * 
- * 접근 제어 정책:
- * 1. 모든 블로그 페이지는 공개 접근 허용
- * 2. 댓글 관련 API는 인증된 사용자만 접근 가능
- * 3. 관리자 페이지는 향후 역할 기반 접근 제어 적용 예정
+ * 단순화된 접근:
+ * - createRouteMatcher 사용하지 않음
+ * - 수동 경로 확인으로 패턴 오류 방지
  */
 export default clerkMiddleware(async (auth, request) => {
   const { userId } = await auth()
   const { pathname } = request.nextUrl
+  const method = request.method
 
-  // 개발 환경에서 디버깅 정보 출력 (프로덕션에서는 제거)
+  // 개발 환경에서 디버깅 정보 출력
   if (process.env.NODE_ENV === 'development') {
-    console.log(`🛡️ Middleware: ${pathname} - User: ${userId ? 'Authenticated' : 'Anonymous'}`)
+    console.log(`🛡️ Middleware: ${pathname} - User: ${userId ? 'Authenticated' : 'Anonymous'} - Method: ${method}`)
   }
 
-  // 보호된 API 라우트에 대한 인증 확인
-  if (isProtectedApiRoute(request)) {
+  // 공개 접근 허용 경로들
+  const publicPaths = [
+    '/',
+    '/sign-in',
+    '/sign-up',
+    '/test-api',
+    '/test-supabase',
+  ]
+
+  // 공개 API 경로들 (GET 요청만)
+  const publicApiPaths = [
+    '/api/posts', // GET 요청만 공개
+    '/api/categories', // GET 요청만 공개
+  ]
+
+  // 완전 공개 경로
+  if (publicPaths.some(path => pathname === path || pathname.startsWith(path))) {
+    return NextResponse.next()
+  }
+
+  // 블로그 콘텐츠 페이지 (공개)
+  if (pathname.startsWith('/posts/') || 
+      pathname.startsWith('/categories/') ||
+      pathname.startsWith('/search')) {
+    return NextResponse.next()
+  }
+
+  // 게시물 slug 조회 API (공개)
+  if (pathname.startsWith('/api/posts/slug/') && method === 'GET') {
+    return NextResponse.next()
+  }
+
+  // 카테고리별 게시물 조회 API (공개)
+  if (pathname.match(/^\/api\/categories\/[^\/]+\/posts$/) && method === 'GET') {
+    return NextResponse.next()
+  }
+
+  // 공개 API 경로 (GET 요청만)
+  if (publicApiPaths.includes(pathname) && method === 'GET') {
+    return NextResponse.next()
+  }
+
+  // 보호된 API 경로들
+  const protectedApiPaths = [
+    '/api/posts', // POST, PUT, DELETE
+    '/api/categories', // POST, PUT, DELETE
+    '/api/comments',
+    '/api/admin',
+  ]
+
+  // 게시물 수정/삭제 API (보호됨)
+  if (pathname.match(/^\/api\/posts\/[^\/]+$/) && (method === 'PUT' || method === 'DELETE' || method === 'GET')) {
     if (!userId) {
-      // 인증되지 않은 사용자는 401 에러 반환
       return NextResponse.json(
         { 
-          error: '인증이 필요합니다. 댓글을 작성하려면 로그인해 주세요.',
+          error: '인증이 필요합니다. 로그인해 주세요.',
           code: 'AUTHENTICATION_REQUIRED'
         },
         { status: 401 }
       )
     }
-    
-    // 인증된 사용자는 계속 진행
     return NextResponse.next()
   }
 
-  // 관리자 페이지 접근 제어 (향후 확장)
-  if (isAdminRoute(request)) {
+  // 보호된 API 경로 확인
+  if (protectedApiPaths.some(path => pathname.startsWith(path)) && method !== 'GET') {
     if (!userId) {
-      // 로그인 페이지로 리디렉션
+      return NextResponse.json(
+        { 
+          error: '인증이 필요합니다. 로그인해 주세요.',
+          code: 'AUTHENTICATION_REQUIRED'
+        },
+        { status: 401 }
+      )
+    }
+    return NextResponse.next()
+  }
+
+  // 관리자 페이지 접근 제어
+  if (pathname.startsWith('/admin/')) {
+    if (!userId) {
       const signInUrl = new URL('/sign-in', request.url)
       signInUrl.searchParams.set('redirect_url', pathname)
       return NextResponse.redirect(signInUrl)
     }
-    
-    // 추후 역할 기반 접근 제어 로직 추가 예정
-    // const { sessionClaims } = await auth()
-    // const userRole = sessionClaims?.metadata?.role
-    // if (userRole !== 'admin') {
-    //   return NextResponse.redirect(new URL('/unauthorized', request.url))
-    // }
+    return NextResponse.next()
   }
 
-  // 공개 라우트와 기타 모든 페이지는 자유 접근 허용
+  // 기타 모든 경로는 허용
   return NextResponse.next()
 })
 
-/**
- * 미들웨어가 실행될 경로를 설정
- * 
- * 매처 설정:
- * - 모든 API 라우트 (/api/.*)
- * - 모든 페이지 라우트 (/, /posts/*, /admin/* 등)
- * - 정적 파일과 내부 Next.js 라우트는 제외
- */
 export const config = {
   matcher: [
-    // API 라우트 포함
     '/api/(.*)',
-    
-    // 페이지 라우트 포함 (정적 파일 제외)
     '/((?!_next|[^?]*\\.(?:html?|css|js(?!on)|jpe?g|webp|png|gif|svg|ttf|woff2?|ico|csv|docx?|xlsx?|zip|webmanifest)).*)',
-    
-    // 루트 경로 포함
     '/',
-    
-    // trpc 관련 경로 (사용하는 경우)
     '/(trpc)(.*)',
   ],
 } 

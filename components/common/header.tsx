@@ -41,6 +41,12 @@ const navItems: NavItem[] = [
   { name: '카테고리', href: '/categories', description: '카테고리별 글 보기' },
   { name: '검색', href: '/search', description: '포스트 검색하기' },
   { name: '소개', href: '/about', description: '블로그 소개 보기' },
+  // 개발 환경에서만 테스트 페이지 표시
+  ...(process.env.NODE_ENV === 'development' ? [
+    { name: 'Supabase 테스트', href: '/test-supabase', description: 'Third-Party Auth 통합 테스트' },
+    { name: '업로드 테스트', href: '/test-upload', description: '이미지 업로드 및 Storage 정책 테스트' },
+    { name: 'API 테스트', href: '/test-api', description: 'CRUD API 테스트' },
+  ] : []),
 ];
 
 export default function Header() {
@@ -117,7 +123,7 @@ export default function Header() {
                 asChild
                 className="hidden md:flex items-center gap-2"
               >
-                <Link href="/admin/post/new">
+                <Link href="/admin/posts/create">
                   <PlusCircle className="h-4 w-4" />
                   새 글 작성
                 </Link>
@@ -243,7 +249,7 @@ export default function Header() {
                         asChild
                       >
                         <Link
-                          href="/admin/post/new"
+                          href="/admin/posts/create"
                           onClick={closeMobileMenu}
                           aria-label="새 글 작성"
                         >

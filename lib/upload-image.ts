@@ -1,231 +1,246 @@
 /**
  * Supabase Storage 이미지 업로드 유틸리티
- * 
- * 주요 기능:
- * - 이미지 파일 형식 검증
- * - 고유한 파일명 생성
- * - Supabase Storage에 업로드
- * - 공개 URL 반환
- * - 타입 안전성 확보
+ * 2025년 새로운 Clerk Third-Party Auth 방식 사용
  */
 
-import { v4 as uuidv4 } from 'uuid'
-import { supabase } from './supabase-shared'
+'use client';
 
-// =====================================================
+import { useSupabaseClient } from '@/lib/supabase';
+import { v4 as uuidv4 } from 'uuid';
+
+// ========================================
 // 타입 정의
-// =====================================================
+// ========================================
 
 /**
  * 이미지 업로드 결과 타입
  */
-export interface UploadImageResult {
-  /** 업로드 성공 여부 */
-  success: boolean
-  /** 업로드된 이미지의 공개 URL (성공 시) */
-  url?: string
-  /** 오류 메시지 (실패 시) */
-  error?: string
-  /** 업로드된 파일의 경로 (성공 시) */
-  path?: string
+export interface UploadResult {
+  success: boolean;
+  url?: string;
+  error?: string;
 }
 
 /**
  * 지원되는 이미지 파일 형식
  */
-export const SUPPORTED_IMAGE_TYPES = [
+const ALLOWED_IMAGE_TYPES = [
   'image/jpeg',
   'image/jpg', 
   'image/png',
   'image/gif',
   'image/webp'
-] as const
+] as const;
 
 /**
- * 지원되는 이미지 파일 확장자
+ * 파일 확장자 매핑
  */
-export const SUPPORTED_IMAGE_EXTENSIONS = [
-  'jpg',
-  'jpeg',
-  'png', 
-  'gif',
-  'webp'
-] as const
+const FILE_EXTENSIONS: Record<string, string> = {
+  'image/jpeg': 'jpg',
+  'image/jpg': 'jpg',
+  'image/png': 'png',
+  'image/gif': 'gif',
+  'image/webp': 'webp'
+};
 
-/**
- * Supabase Storage 버킷 이름
- */
-export const BLOG_IMAGES_BUCKET = 'blog-images'
-
-// =====================================================
+// ========================================
 // 유틸리티 함수
-// =====================================================
+// ========================================
 
 /**
- * 파일 확장자 추출 함수
- * @param fileName - 파일명
- * @returns 파일 확장자 (소문자)
+ * 파일 형식 검증 함수
+ * @param file - 업로드할 파일
+ * @returns 유효한 이미지 파일인지 여부
  */
-function getFileExtension(fileName: string): string {
-  const lastDotIndex = fileName.lastIndexOf('.')
-  if (lastDotIndex === -1) return ''
-  return fileName.slice(lastDotIndex + 1).toLowerCase()
+function validateImageFile(file: File): boolean {
+  return ALLOWED_IMAGE_TYPES.includes(file.type as any);
 }
 
 /**
  * 고유한 파일명 생성 함수
- * @param originalFileName - 원본 파일명
- * @returns 고유한 파일명 (UUID + 타임스탬프 + 확장자)
+ * 형식: timestamp_uuid.확장자
+ * @param originalFile - 원본 파일
+ * @returns 고유한 파일명
  */
-function generateUniqueFileName(originalFileName: string): string {
-  const extension = getFileExtension(originalFileName)
-  const timestamp = Date.now()
-  const uuid = uuidv4().slice(0, 8) // UUID의 첫 8자리만 사용
+function generateUniqueFileName(originalFile: File): string {
+  const timestamp = Date.now();
+  const uniqueId = uuidv4().substring(0, 8); // UUID 앞 8자리만 사용
+  const extension = FILE_EXTENSIONS[originalFile.type] || 'jpg';
   
-  return `${timestamp}_${uuid}.${extension}`
+  return `${timestamp}_${uniqueId}.${extension}`;
 }
 
-/**
- * 파일 형식 검증 함수
- * @param file - 업로드할 파일 객체
- * @returns 검증 결과 { isValid: boolean, error?: string }
- */
-function validateImageFile(file: File): { isValid: boolean; error?: string } {
-  // 파일 MIME 타입 검증
-  if (!SUPPORTED_IMAGE_TYPES.includes(file.type as any)) {
-    return {
-      isValid: false,
-      error: `지원하지 않는 파일 형식입니다. 지원 형식: ${SUPPORTED_IMAGE_TYPES.join(', ')}`
-    }
-  }
-
-  // 파일 확장자 검증 (추가 보안)
-  const extension = getFileExtension(file.name)
-  if (!SUPPORTED_IMAGE_EXTENSIONS.includes(extension as any)) {
-    return {
-      isValid: false,
-      error: `지원하지 않는 파일 확장자입니다. 지원 확장자: ${SUPPORTED_IMAGE_EXTENSIONS.join(', ')}`
-    }
-  }
-
-  // 파일이 비어있는지 확인
-  if (file.size === 0) {
-    return {
-      isValid: false,
-      error: '파일이 비어있습니다.'
-    }
-  }
-
-  return { isValid: true }
-}
-
-// =====================================================
+// ========================================
 // 메인 업로드 함수
-// =====================================================
+// ========================================
 
 /**
  * 이미지를 Supabase Storage에 업로드하는 함수
  * 
- * @param file - 업로드할 이미지 파일 (File 객체)
- * @returns Promise<UploadImageResult> - 업로드 결과
+ * @param file - 업로드할 이미지 파일
+ * @returns Promise<UploadResult> - 업로드 결과
  * 
- * 사용 예시:
+ * @example
  * ```typescript
- * const result = await uploadImage(file)
+ * const result = await uploadImage(selectedFile);
  * if (result.success) {
- *   console.log('업로드 성공:', result.url)
+ *   console.log('업로드 성공:', result.url);
  * } else {
- *   console.error('업로드 실패:', result.error)
+ *   console.error('업로드 실패:', result.error);
  * }
  * ```
  */
-export async function uploadImage(file: File): Promise<UploadImageResult> {
+export async function uploadImage(file: File): Promise<UploadResult> {
   try {
-    // 1단계: 파일 형식 검증
-    const validation = validateImageFile(file)
-    if (!validation.isValid) {
+    // 1. 파일 형식 검증
+    if (!validateImageFile(file)) {
       return {
         success: false,
-        error: validation.error
-      }
+        error: '지원되지 않는 파일 형식입니다. JPG, PNG, GIF, WebP 파일만 업로드 가능합니다.'
+      };
     }
 
-    // 2단계: 고유한 파일명 생성
-    const uniqueFileName = generateUniqueFileName(file.name)
-    const filePath = `images/${uniqueFileName}`
+    // 2. 파일 크기 확인 (선택적 - 현재는 제한 없음)
+    // if (file.size > 10 * 1024 * 1024) { // 10MB 제한 예시
+    //   return {
+    //     success: false,
+    //     error: '파일 크기가 너무 큽니다. 10MB 이하의 파일을 선택해주세요.'
+    //   };
+    // }
 
-    // 3단계: Supabase Storage에 파일 업로드
-    const { data: uploadData, error: uploadError } = await supabase.storage
-      .from(BLOG_IMAGES_BUCKET)
-      .upload(filePath, file, {
-        // 파일이 이미 존재하면 덮어쓰기 (upsert)
-        upsert: false,
-        // 캐시 제어 헤더 설정
+    // 3. 고유한 파일명 생성
+    const fileName = generateUniqueFileName(file);
+
+    // 4. Supabase 클라이언트 가져오기 (새로운 Third-Party Auth 방식)
+    // 주의: 이 함수는 클라이언트 컴포넌트에서만 사용 가능
+    const supabase = useSupabaseClient();
+
+    // 5. Storage에 파일 업로드
+    const { data, error: uploadError } = await supabase.storage
+      .from('blog-images')
+      .upload(fileName, file, {
         cacheControl: '3600', // 1시간 캐시
-        // Content-Type 자동 감지
-        contentType: file.type
-      })
+        upsert: false // 동일한 파일명이 있으면 오류 발생
+      });
 
-    // 4단계: 업로드 오류 확인
+    // 6. 업로드 실패 처리
     if (uploadError) {
-      console.error('Supabase Storage 업로드 오류:', uploadError)
+      console.error('Supabase 업로드 오류:', uploadError);
       return {
         success: false,
-        error: `파일 업로드 실패: ${uploadError.message}`
-      }
+        error: `업로드 실패: ${uploadError.message}`
+      };
     }
 
-    // 5단계: 업로드된 파일의 공개 URL 생성
+    // 7. 업로드 성공 시 공개 URL 생성
     const { data: urlData } = supabase.storage
-      .from(BLOG_IMAGES_BUCKET)
-      .getPublicUrl(filePath)
+      .from('blog-images')
+      .getPublicUrl(fileName);
 
-    // 6단계: 공개 URL 확인
+    // 8. URL 생성 확인
     if (!urlData?.publicUrl) {
       return {
         success: false,
-        error: '파일 URL 생성에 실패했습니다.'
-      }
+        error: '이미지 URL 생성에 실패했습니다.'
+      };
     }
 
-    // 7단계: 성공 결과 반환
+    // 9. 성공 결과 반환
     return {
       success: true,
-      url: urlData.publicUrl,
-      path: filePath
-    }
+      url: urlData.publicUrl
+    };
 
   } catch (error) {
-    // 예상치 못한 오류 처리
-    console.error('이미지 업로드 중 예상치 못한 오류:', error)
+    // 10. 예상치 못한 오류 처리
+    console.error('이미지 업로드 중 오류 발생:', error);
     
     return {
       success: false,
       error: error instanceof Error 
-        ? `업로드 중 오류 발생: ${error.message}`
+        ? `업로드 오류: ${error.message}`
         : '알 수 없는 오류가 발생했습니다.'
-    }
+    };
   }
 }
 
-// =====================================================
-// 추가 유틸리티 함수들
-// =====================================================
+// ========================================
+// Hook 형태의 업로드 함수 (선택적)
+// ========================================
 
 /**
- * 파일 크기를 사람이 읽기 쉬운 형태로 변환
- * @param bytes - 바이트 크기
- * @returns 포맷된 크기 문자열 (예: "1.5 MB")
+ * React Hook 형태의 이미지 업로드 함수
+ * 컴포넌트에서 더 쉽게 사용할 수 있도록 제공
+ * 
+ * @returns 업로드 함수와 상태
  */
-export function formatFileSize(bytes: number): string {
-  if (bytes === 0) return '0 Bytes'
-  
-  const k = 1024
-  const sizes = ['Bytes', 'KB', 'MB', 'GB']
-  const i = Math.floor(Math.log(bytes) / Math.log(k))
-  
-  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
+export function useImageUpload() {
+  const supabase = useSupabaseClient();
+
+  const uploadImageWithClient = async (file: File): Promise<UploadResult> => {
+    try {
+      // 파일 형식 검증
+      if (!validateImageFile(file)) {
+        return {
+          success: false,
+          error: '지원되지 않는 파일 형식입니다. JPG, PNG, GIF, WebP 파일만 업로드 가능합니다.'
+        };
+      }
+
+      // 고유한 파일명 생성
+      const fileName = generateUniqueFileName(file);      // Storage에 파일 업로드
+      const { data, error: uploadError } = await supabase.storage
+        .from('blog-images')
+        .upload(fileName, file, {
+          cacheControl: '3600',
+          upsert: false
+        });
+
+      if (uploadError) {
+        console.error('Supabase 업로드 오류:', uploadError);
+        return {
+          success: false,
+          error: `업로드 실패: ${uploadError.message}`
+        };
+      }
+
+      // 공개 URL 생성
+      const { data: urlData } = supabase.storage
+        .from('blog-images')
+        .getPublicUrl(fileName);
+
+      if (!urlData?.publicUrl) {
+        return {
+          success: false,
+          error: '이미지 URL 생성에 실패했습니다.'
+        };
+      }
+
+      return {
+        success: true,
+        url: urlData.publicUrl
+      };
+
+    } catch (error) {
+      console.error('이미지 업로드 중 오류 발생:', error);
+      
+      return {
+        success: false,
+        error: error instanceof Error 
+          ? `업로드 오류: ${error.message}`
+          : '알 수 없는 오류가 발생했습니다.'
+      };
+    }
+  };
+
+  return {
+    uploadImage: uploadImageWithClient
+  };
 }
+
+// ========================================
+// 추가 유틸리티 함수들
+// ========================================
 
 /**
  * 이미지 파일인지 확인하는 함수
@@ -233,105 +248,28 @@ export function formatFileSize(bytes: number): string {
  * @returns 이미지 파일 여부
  */
 export function isImageFile(file: File): boolean {
-  return SUPPORTED_IMAGE_TYPES.includes(file.type as any)
+  return validateImageFile(file);
 }
 
 /**
- * 파일명에서 안전하지 않은 문자 제거
- * @param fileName - 원본 파일명
- * @returns 안전한 파일명
+ * 지원되는 파일 형식 목록 반환
+ * @returns 지원되는 MIME 타입 배열
  */
-export function sanitizeFileName(fileName: string): string {
-  // 특수문자 제거 및 공백을 언더스코어로 변경
-  return fileName
-    .replace(/[^a-zA-Z0-9가-힣.\-_]/g, '_')
-    .replace(/\s+/g, '_')
-    .toLowerCase()
+export function getSupportedImageTypes(): readonly string[] {
+  return ALLOWED_IMAGE_TYPES;
 }
 
-// =====================================================
-// 사용 예시 및 테스트 함수
-// =====================================================
-
 /**
- * 이미지 업로드 테스트 함수 (개발용)
- * @param file - 테스트할 파일
+ * 파일 크기를 사람이 읽기 쉬운 형태로 변환
+ * @param bytes - 바이트 크기
+ * @returns 포맷된 크기 문자열
  */
-export async function testImageUpload(file: File): Promise<void> {
-  console.log('=== 이미지 업로드 테스트 시작 ===')
-  console.log('파일명:', file.name)
-  console.log('파일 크기:', formatFileSize(file.size))
-  console.log('파일 타입:', file.type)
+export function formatFileSize(bytes: number): string {
+  if (bytes === 0) return '0 Bytes';
   
-  const result = await uploadImage(file)
+  const k = 1024;
+  const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
   
-  if (result.success) {
-    console.log('✅ 업로드 성공!')
-    console.log('URL:', result.url)
-    console.log('경로:', result.path)
-  } else {
-    console.log('❌ 업로드 실패!')
-    console.log('오류:', result.error)
-  }
-  
-  console.log('=== 테스트 완료 ===')
-}
-
-// =====================================================
-// 타입 가드 함수
-// =====================================================
-
-/**
- * UploadImageResult가 성공 결과인지 확인하는 타입 가드
- * @param result - 업로드 결과
- * @returns 성공 여부와 함께 타입 좁히기
- */
-export function isUploadSuccess(
-  result: UploadImageResult
-): result is UploadImageResult & { success: true; url: string; path: string } {
-  return result.success === true && !!result.url && !!result.path
-}
-
-/**
- * UploadImageResult가 실패 결과인지 확인하는 타입 가드
- * @param result - 업로드 결과
- * @returns 실패 여부와 함께 타입 좁히기
- */
-export function isUploadError(
-  result: UploadImageResult
-): result is UploadImageResult & { success: false; error: string } {
-  return result.success === false && !!result.error
-}
-
-// =====================================================
-// 설정 완료
-// =====================================================
-
-/**
- * 사용 가이드:
- * 
- * 1. 기본 사용법:
- *    const result = await uploadImage(file)
- *    if (result.success) {
- *      // result.url 사용
- *    }
- * 
- * 2. 타입 가드 사용:
- *    if (isUploadSuccess(result)) {
- *      // TypeScript가 result.url이 존재함을 보장
- *    }
- * 
- * 3. 파일 검증:
- *    if (isImageFile(file)) {
- *      // 이미지 파일인 경우에만 업로드
- *    }
- * 
- * 4. 개발 테스트:
- *    await testImageUpload(file)
- * 
- * 주의사항:
- * - blog-images 버킷이 Supabase에 생성되어 있어야 함
- * - 파일명은 자동으로 고유하게 생성됨
- * - 지원 형식: jpg, jpeg, png, gif, webp
- * - 파일 크기 제한 없음 (필요시 validateImageFile 함수에서 추가)
- */ 
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+} 

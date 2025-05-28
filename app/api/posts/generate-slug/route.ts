@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createServerClient } from '@/lib/supabase-server';
+import { createServerSupabaseClient } from '@/lib/supabase-server';
 import { generateSlug, generateUniqueSlug, isValidSlug } from '@/lib/utils';
 
 export async function POST(request: NextRequest) {
@@ -24,7 +24,7 @@ export async function POST(request: NextRequest) {
     }
 
     // 기존 슬러그 목록 조회
-    const supabase = createServerClient();
+    const supabase = await createServerSupabaseClient();
     const { data: existingPosts, error } = await supabase
       .from('posts')
       .select('slug')

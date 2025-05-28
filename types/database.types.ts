@@ -1,439 +1,363 @@
 /**
  * Supabase 데이터베이스 TypeScript 타입 정의
+ * 2025년 새로운 Clerk Third-Party Auth 방식 호환
  * 
- * 주요 특징:
- * - Clerk 인증 시스템과 호환 (사용자 ID는 string 타입)
- * - 생성된 데이터베이스 스키마와 완전 일치
- * - Row, Insert, Update 타입 분리로 유연성 확보
- * - 블로그 특화 유틸리티 타입 포함
+ * 특징:
+ * - Clerk 사용자 ID는 string 타입 (UUID 아님)
+ * - auth.jwt()->>'sub' 함수 활용
+ * - Third-Party Auth 토큰 구조 반영
  */
 
-// =====================================================
-// 1. 기본 테이블 타입 정의
-// =====================================================
+// ========================================
+// 1. 기본 데이터베이스 테이블 타입
+// ========================================
 
 /**
- * Categories 테이블 타입
- * 블로그 게시물의 카테고리 정보
+ * 카테고리 테이블 타입
+ * 블로그 게시물 분류를 위한 카테고리 정보
  */
-export interface Categories {
-  /** 카테고리 고유 ID (UUID) */
-  id: string
-  /** 카테고리명 */
-  name: string
-  /** URL용 카테고리명 (SEO 친화적) */
-  slug: string
-  /** 카테고리 설명 (선택적) */
-  description: string | null
-  /** 생성일 */
-  created_at: string
-  /** 수정일 */
-  updated_at: string
+export interface Category {
+  id: string; // UUID
+  name: string;
+  slug: string;
+  description: string | null;
+  color: string; // hex 색상 코드 (예: #6366f1)
+  created_at: string; // ISO 8601 형식
+  updated_at: string; // ISO 8601 형식
 }
 
 /**
- * Posts 테이블 타입
- * 블로그 게시물 정보
+ * 게시물 테이블 타입
+ * 블로그의 핵심 콘텐츠 정보
  */
-export interface Posts {
-  /** 게시물 고유 ID (UUID) */
-  id: string
-  /** 게시물 제목 */
-  title: string
-  /** 게시물 내용 (마크다운) */
-  content: string
-  /** URL용 제목 (SEO 친화적) */
-  slug: string
-  /** 커버 이미지 URL (선택적) */
-  cover_image_url: string | null
-  /** 작성자 ID (Clerk 사용자 ID - 문자열) */
-  author_id: string
-  /** 카테고리 ID (선택적) */
-  category_id: string | null
-  /** 게시물 상태 */
-  status: 'published' | 'draft' | 'archived'
-  /** 조회수 */
-  view_count: number
-  /** 생성일 */
-  created_at: string
-  /** 수정일 */
-  updated_at: string
+export interface Post {
+  id: string; // UUID
+  title: string;
+  slug: string;
+  content: string;
+  excerpt: string | null;
+  status: 'draft' | 'published' | 'archived';
+  cover_image_url: string | null; // Supabase Storage URL
+  view_count: number;
+  author_id: string; // 🔥 Clerk 사용자 ID (string 타입)
+  category_id: string | null; // UUID
+  created_at: string; // ISO 8601 형식
+  updated_at: string; // ISO 8601 형식
 }
 
 /**
- * Comments 테이블 타입
- * 게시물 댓글 정보
+ * 댓글 테이블 타입
+ * 게시물에 대한 사용자 댓글 (대댓글 지원)
  */
-export interface Comments {
-  /** 댓글 고유 ID (UUID) */
-  id: string
-  /** 게시물 ID */
-  post_id: string
-  /** 댓글 내용 */
-  content: string
-  /** 작성자 ID (Clerk 사용자 ID - 문자열) */
-  author_id: string
-  /** 부모 댓글 ID (대댓글용, 선택적) */
-  parent_id: string | null
-  /** 댓글 상태 */
-  status: 'active' | 'deleted' | 'hidden'
-  /** 생성일 */
-  created_at: string
+export interface Comment {
+  id: string; // UUID
+  content: string;
+  user_id: string; // 🔥 Clerk 사용자 ID (string 타입)
+  user_name: string | null; // Clerk에서 가져온 사용자 표시 이름
+  user_email: string | null; // 사용자 이메일 (선택적)
+  post_id: string; // UUID
+  parent_id: string | null; // 대댓글의 경우 상위 댓글 ID
+  created_at: string; // ISO 8601 형식
+  updated_at: string; // ISO 8601 형식
 }
 
 /**
- * Likes 테이블 타입
- * 게시물 좋아요 정보
+ * 좋아요 테이블 타입
+ * 사용자의 게시물 좋아요 정보
  */
-export interface Likes {
-  /** 좋아요 고유 ID (UUID) */
-  id: string
-  /** 게시물 ID */
-  post_id: string
-  /** 사용자 ID (Clerk 사용자 ID - 문자열) */
-  user_id: string
-  /** 생성일 */
-  created_at: string
+export interface Like {
+  id: string; // UUID
+  user_id: string; // 🔥 Clerk 사용자 ID (string 타입)
+  post_id: string; // UUID
+  created_at: string; // ISO 8601 형식
 }
 
-// =====================================================
-// 2. CRUD 작업을 위한 타입 분리
-// =====================================================
+// ========================================
+// 2. Database 스키마 타입 (Supabase 클라이언트용)
+// ========================================
 
 /**
- * 데이터베이스 삽입용 타입 (Insert)
- * 자동 생성되는 필드들을 제외한 타입
- */
-export type CategoriesInsert = Omit<Categories, 'id' | 'created_at' | 'updated_at'>
-export type PostsInsert = Omit<Posts, 'id' | 'created_at' | 'updated_at' | 'view_count'>
-export type CommentsInsert = Omit<Comments, 'id' | 'created_at'>
-export type LikesInsert = Omit<Likes, 'id' | 'created_at'>
-
-/**
- * 데이터베이스 업데이트용 타입 (Update)
- * 모든 필드가 선택적이며, ID와 생성일은 제외
- */
-export type CategoriesUpdate = Partial<Omit<Categories, 'id' | 'created_at'>>
-export type PostsUpdate = Partial<Omit<Posts, 'id' | 'created_at'>>
-export type CommentsUpdate = Partial<Omit<Comments, 'id' | 'created_at'>>
-export type LikesUpdate = Partial<Omit<Likes, 'id' | 'created_at'>>
-
-// =====================================================
-// 3. Supabase Database 통합 타입
-// =====================================================
-
-/**
- * Supabase 데이터베이스 스키마 타입
- * Supabase 클라이언트에서 사용
+ * Supabase Database 스키마 타입
+ * createClient<Database>() 형태로 사용
  */
 export interface Database {
   public: {
     Tables: {
       categories: {
-        Row: Categories
-        Insert: CategoriesInsert
-        Update: CategoriesUpdate
-      }
+        Row: Category;
+        Insert: Omit<Category, 'id' | 'created_at' | 'updated_at'> & {
+          id?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: Partial<Omit<Category, 'id' | 'created_at' | 'updated_at'>>;
+      };
       posts: {
-        Row: Posts
-        Insert: PostsInsert
-        Update: PostsUpdate
-      }
+        Row: Post;
+        Insert: Omit<Post, 'id' | 'created_at' | 'updated_at' | 'author_id' | 'view_count'> & {
+          id?: string;
+          author_id?: string; // auth.jwt()->>'sub' 기본값
+          view_count?: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: Partial<Omit<Post, 'id' | 'created_at' | 'updated_at' | 'author_id'>>;
+      };
       comments: {
-        Row: Comments
-        Insert: CommentsInsert
-        Update: CommentsUpdate
-      }
+        Row: Comment;
+        Insert: Omit<Comment, 'id' | 'created_at' | 'updated_at' | 'user_id'> & {
+          id?: string;
+          user_id?: string; // auth.jwt()->>'sub' 기본값
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: Partial<Omit<Comment, 'id' | 'created_at' | 'updated_at' | 'user_id'>>;
+      };
       likes: {
-        Row: Likes
-        Insert: LikesInsert
-        Update: LikesUpdate
-      }
-    }
+        Row: Like;
+        Insert: Omit<Like, 'id' | 'created_at' | 'user_id'> & {
+          id?: string;
+          user_id?: string; // auth.jwt()->>'sub' 기본값
+          created_at?: string;
+        };
+        Update: Partial<Omit<Like, 'id' | 'created_at' | 'user_id'>>;
+      };
+    };
     Views: {
-      posts_with_category: {
-        Row: PostWithCategory
-      }
-      posts_with_stats: {
-        Row: PostWithStats
-      }
-    }
+      [_ in never]: never;
+    };
     Functions: {
-      [_ in never]: never
-    }
+      [_ in never]: never;
+    };
     Enums: {
-      [_ in never]: never
-    }
-  }
+      [_ in never]: never;
+    };
+  };
 }
 
-// =====================================================
-// 4. Clerk 인증 관련 타입
-// =====================================================
-
-/**
- * Clerk 사용자 기본 정보 타입
- * Clerk에서 제공하는 사용자 정보 구조
- */
-export interface ClerkUser {
-  /** Clerk 사용자 ID (문자열) */
-  id: string
-  /** 사용자 이메일 */
-  emailAddresses: Array<{
-    emailAddress: string
-    id: string
-  }>
-  /** 사용자 이름 */
-  firstName: string | null
-  /** 사용자 성 */
-  lastName: string | null
-  /** 프로필 이미지 URL */
-  imageUrl: string
-  /** 사용자명 */
-  username: string | null
-  /** 생성일 */
-  createdAt: number
-  /** 수정일 */
-  updatedAt: number
-}
-
-/**
- * Clerk JWT 클레임 타입
- * JWT 토큰에 포함되는 사용자 정보
- */
-export interface ClerkJWTClaims {
-  /** 사용자 ID */
-  sub: string
-  /** 이메일 */
-  email?: string
-  /** 이름 */
-  given_name?: string
-  /** 성 */
-  family_name?: string
-  /** 프로필 이미지 */
-  picture?: string
-  /** 발급 시간 */
-  iat: number
-  /** 만료 시간 */
-  exp: number
-}
-
-// =====================================================
-// 5. 블로그 특화 유틸리티 타입
-// =====================================================
+// ========================================
+// 3. 확장 타입 (관계형 데이터 조회용)
+// ========================================
 
 /**
  * 카테고리 정보가 포함된 게시물 타입
- * posts_with_category 뷰와 일치
+ * JOIN 쿼리 결과용
  */
-export interface PostWithCategory extends Posts {
-  /** 카테고리명 */
-  category_name: string | null
-  /** 카테고리 slug */
-  category_slug: string | null
+export interface PostWithCategory extends Post {
+  categories: Category | null;
 }
 
 /**
- * 통계 정보가 포함된 게시물 타입
- * posts_with_stats 뷰와 일치
+ * 댓글 수가 포함된 게시물 타입
+ * 게시물 목록에서 댓글 수 표시용
  */
-export interface PostWithStats extends Omit<Posts, 'content'> {
-  /** 댓글 수 */
-  comment_count: number
-  /** 좋아요 수 */
-  like_count: number
+export interface PostWithCommentCount extends Post {
+  comment_count: number;
 }
 
 /**
- * 작성자 정보가 포함된 댓글 타입
- * 프론트엔드에서 댓글 표시용
+ * 좋아요 수가 포함된 게시물 타입
+ * 게시물 목록에서 좋아요 수 표시용
  */
-export interface CommentWithAuthor extends Comments {
-  /** 작성자 이름 */
-  author_name: string
-  /** 작성자 프로필 이미지 */
-  author_image: string
-  /** 대댓글 목록 (선택적) */
-  replies?: CommentWithAuthor[]
+export interface PostWithLikeCount extends Post {
+  like_count: number;
 }
 
 /**
- * 게시물 목록 표시용 타입
- * 목록에서 필요한 최소 정보만 포함
+ * 모든 관련 정보가 포함된 완전한 게시물 타입
+ * 게시물 상세 페이지용
  */
-export interface PostSummary {
-  /** 게시물 ID */
-  id: string
-  /** 제목 */
-  title: string
-  /** 요약 (content의 일부) */
-  excerpt: string
-  /** slug */
-  slug: string
-  /** 커버 이미지 */
-  cover_image_url: string | null
-  /** 작성자 ID */
-  author_id: string
-  /** 카테고리 정보 */
-  category_name: string | null
-  category_slug: string | null
-  /** 통계 */
-  comment_count: number
-  like_count: number
-  view_count: number
-  /** 생성일 */
-  created_at: string
+export interface PostWithAllData extends Post {
+  categories: Category | null;
+  comment_count: number;
+  like_count: number;
+  user_liked: boolean; // 현재 사용자가 좋아요를 눌렀는지
 }
 
 /**
- * 게시물 상세 표시용 타입
- * 상세 페이지에서 필요한 모든 정보 포함
+ * 게시물 수가 포함된 카테고리 타입
+ * 카테고리 목록 페이지용
  */
-export interface PostDetail extends PostWithCategory {
-  /** 댓글 목록 */
-  comments: CommentWithAuthor[]
-  /** 좋아요 수 */
-  like_count: number
-  /** 현재 사용자의 좋아요 여부 */
-  is_liked: boolean
+export interface CategoryWithPostCount extends Category {
+  post_count: number;
 }
 
-// =====================================================
-// 6. API 응답 타입
-// =====================================================
+/**
+ * 대댓글이 포함된 댓글 타입
+ * 댓글 트리 구조 표시용
+ */
+export interface CommentWithReplies extends Comment {
+  replies: Comment[];
+}
+
+// ========================================
+// 4. Clerk 사용자 관련 타입 (2025년 Third-Party Auth)
+// ========================================
 
 /**
- * API 성공 응답 타입
+ * Clerk 사용자 기본 정보 타입
+ * Third-Party Auth에서 사용되는 사용자 정보
+ */
+export interface ClerkUser {
+  id: string; // Clerk 사용자 ID (string 형식)
+  firstName: string | null;
+  lastName: string | null;
+  emailAddress: string;
+  imageUrl: string | null;
+  username: string | null;
+}
+
+/**
+ * JWT 토큰 클레임 타입 (2025년 새로운 방식)
+ * auth.jwt() 함수 결과 타입
+ */
+export interface JWTClaims {
+  sub: string; // Clerk 사용자 ID
+  role: 'authenticated' | 'anon'; // 사용자 역할
+  aud: string; // 대상 (audience)
+  exp: number; // 만료 시간 (Unix timestamp)
+  iat: number; // 발급 시간 (Unix timestamp)
+  iss: string; // 발급자 (issuer)
+  email?: string; // 사용자 이메일 (선택적)
+}
+
+/**
+ * Clerk 세션 정보 타입
+ * useSession 훅에서 사용되는 세션 타입
+ */
+export interface ClerkSession {
+  id: string;
+  user: ClerkUser;
+  lastActiveAt: Date;
+  expireAt: Date;
+  getToken: () => Promise<string | null>;
+}
+
+// ========================================
+// 5. API 응답 타입
+// ========================================
+
+/**
+ * 기본 API 응답 타입
+ * 모든 API 엔드포인트에서 사용되는 공통 응답 구조
  */
 export interface ApiResponse<T = any> {
-  /** 성공 여부 */
-  success: true
-  /** 응답 데이터 */
-  data: T
-  /** 응답 메시지 (선택적) */
-  message?: string
+  success: boolean;
+  data?: T;
+  error?: string;
+  message?: string;
 }
 
 /**
- * API 오류 응답 타입
+ * 페이지네이션이 포함된 API 응답 타입
+ * 목록 조회 API에서 사용
  */
-export interface ApiError {
-  /** 성공 여부 */
-  success: false
-  /** 오류 메시지 */
-  error: string
-  /** 상세 오류 정보 (선택적) */
-  details?: any
+export interface PaginatedResponse<T = any> extends ApiResponse<T[]> {
+  pagination?: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+  };
 }
 
 /**
- * 페이지네이션 정보 타입
+ * 게시물 생성/수정 요청 타입
+ * POST, PUT API에서 사용되는 요청 바디 타입
  */
-export interface PaginationInfo {
-  /** 현재 페이지 */
-  page: number
-  /** 페이지당 항목 수 */
-  limit: number
-  /** 전체 항목 수 */
-  total: number
-  /** 전체 페이지 수 */
-  totalPages: number
-  /** 다음 페이지 존재 여부 */
-  hasNext: boolean
-  /** 이전 페이지 존재 여부 */
-  hasPrev: boolean
+export interface PostCreateRequest {
+  title: string;
+  content: string;
+  excerpt?: string;
+  category_id?: string | null;
+  status?: 'draft' | 'published' | 'archived';
+  featured_image?: string | null;
 }
 
 /**
- * 페이지네이션된 응답 타입
+ * 댓글 생성 요청 타입
+ * 댓글 작성 API에서 사용되는 요청 바디 타입
  */
-export interface PaginatedResponse<T> extends ApiResponse<T[]> {
-  /** 페이지네이션 정보 */
-  pagination: PaginationInfo
+export interface CommentCreateRequest {
+  content: string;
+  post_id: string;
+  parent_id?: string; // 대댓글의 경우
+  user_name?: string; // Clerk에서 가져온 사용자 이름
+  user_email?: string; // 사용자 이메일
 }
 
-// =====================================================
-// 7. 폼 및 입력 타입
-// =====================================================
+// ========================================
+// 6. 유틸리티 타입
+// ========================================
 
 /**
- * 게시물 작성/수정 폼 타입
+ * 테이블 이름 타입
+ * 타입 안전한 테이블 참조를 위한 유니온 타입
  */
-export interface PostFormData {
-  /** 제목 */
-  title: string
-  /** 내용 */
-  content: string
-  /** 카테고리 ID (선택적) */
-  category_id?: string
-  /** 커버 이미지 파일 (선택적) */
-  cover_image?: File
-  /** 상태 */
-  status: Posts['status']
-}
+export type TableName = 'categories' | 'posts' | 'comments' | 'likes';
 
 /**
- * 댓글 작성 폼 타입
+ * 게시물 상태 타입
+ * 게시물 상태 필터링에 사용
  */
-export interface CommentFormData {
-  /** 댓글 내용 */
-  content: string
-  /** 부모 댓글 ID (대댓글용, 선택적) */
-  parent_id?: string
-}
+export type PostStatus = Post['status'];
 
 /**
- * 카테고리 작성/수정 폼 타입
+ * 정렬 방향 타입
+ * 목록 조회 시 정렬 방향 지정
  */
-export interface CategoryFormData {
-  /** 카테고리명 */
-  name: string
-  /** slug */
-  slug: string
-  /** 설명 (선택적) */
-  description?: string
-}
-
-// =====================================================
-// 8. 검색 및 필터 타입
-// =====================================================
+export type SortDirection = 'asc' | 'desc';
 
 /**
- * 게시물 검색 필터 타입
+ * 정렬 필드 타입 (게시물용)
+ * 게시물 목록 정렬에 사용되는 필드
  */
-export interface PostFilters {
-  /** 검색 키워드 */
-  search?: string
-  /** 카테고리 ID */
-  category_id?: string
-  /** 작성자 ID */
-  author_id?: string
-  /** 상태 */
-  status?: Posts['status']
-  /** 정렬 기준 */
-  sort_by?: 'created_at' | 'updated_at' | 'view_count' | 'title'
-  /** 정렬 순서 */
-  sort_order?: 'asc' | 'desc'
-  /** 페이지 */
-  page?: number
-  /** 페이지당 항목 수 */
-  limit?: number
+export type PostSortField = 'created_at' | 'updated_at' | 'title' | 'view_count';
+
+// ========================================
+// 7. 타입 가드 함수
+// ========================================
+
+/**
+ * JWT 클레임이 유효한지 확인하는 타입 가드
+ * @param claims - 검증할 클레임 객체
+ * @returns 유효한 JWT 클레임인지 여부
+ */
+export function isValidJWTClaims(claims: any): claims is JWTClaims {
+  return (
+    typeof claims === 'object' &&
+    typeof claims.sub === 'string' &&
+    (claims.role === 'authenticated' || claims.role === 'anon') &&
+    typeof claims.exp === 'number' &&
+    typeof claims.iat === 'number'
+  );
 }
 
 /**
- * 댓글 검색 필터 타입
+ * 게시물이 발행된 상태인지 확인하는 타입 가드
+ * @param post - 확인할 게시물 객체
+ * @returns 발행된 게시물인지 여부
  */
-export interface CommentFilters {
-  /** 게시물 ID */
-  post_id?: string
-  /** 작성자 ID */
-  author_id?: string
-  /** 상태 */
-  status?: Comments['status']
-  /** 정렬 순서 */
-  sort_order?: 'asc' | 'desc'
+export function isPublishedPost(post: Post): boolean {
+  return post.status === 'published';
 }
 
-// =====================================================
-// 타입 정의 완료
-// ===================================================== 
+/**
+ * 사용자가 댓글 작성자인지 확인하는 함수
+ * @param comment - 댓글 객체
+ * @param userId - 확인할 사용자 ID
+ * @returns 댓글 작성자인지 여부
+ */
+export function isCommentAuthor(comment: Comment, userId: string): boolean {
+  return comment.user_id === userId;
+}
+
+/**
+ * 사용자가 게시물 작성자인지 확인하는 함수
+ * @param post - 게시물 객체
+ * @param userId - 확인할 사용자 ID
+ * @returns 게시물 작성자인지 여부
+ */
+export function isPostAuthor(post: Post, userId: string): boolean {
+  return post.author_id === userId;
+} 

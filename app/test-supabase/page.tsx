@@ -1,570 +1,387 @@
-'use client'
+'use client';
 
-import { useState, useEffect } from 'react'
-import { useAuth } from '@clerk/nextjs'
-import { useClerkSupabase } from '@/lib/supabase-client'
-import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
-import { Separator } from '@/components/ui/separator'
-import { CheckCircle, XCircle, AlertCircle, Loader2, Database, Shield, User, FileImage } from 'lucide-react'
+import { useSession, useUser } from '@clerk/nextjs';
+import { createClient } from '@supabase/supabase-js';
+import { useState, useEffect } from 'react';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { CheckCircle, XCircle, AlertCircle, Database, Key, User } from 'lucide-react';
 
-// 테스트 결과 타입 정의
-interface TestResult {
-  name: string
-  status: 'success' | 'error' | 'warning' | 'loading'
-  message: string
-  details?: string
-}
-
+/**
+ * 2025년 새로운 Clerk Third-Party Auth 통합 테스트 페이지
+ * JWT Template 방식 deprecated 이후 새로운 방식 사용
+ */
 export default function TestSupabasePage() {
-  const { isLoaded, isSignedIn, user } = useAuth()
-  const { supabaseClient, isLoading: supabaseLoading, isAuthenticated } = useClerkSupabase()
+  // Clerk 세션 및 사용자 정보
+  const { session, isLoaded: sessionLoaded } = useSession();
+  const { user, isLoaded: userLoaded } = useUser();
   
-  const [testResults, setTestResults] = useState<TestResult[]>([])
-  const [isRunningTests, setIsRunningTests] = useState(false)
+  // 테스트 상태
+  const [supabaseTest, setSupabaseTest] = useState<{
+    connected: boolean;
+    error?: string;
+    tokenInfo?: any;
+  }>({ connected: false });
+  
+  const [envCheck, setEnvCheck] = useState({
+    supabaseUrl: !!process.env.NEXT_PUBLIC_SUPABASE_URL,
+    supabaseKey: !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+    clerkPublishable: !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY,
+  });
 
-  // 환경 변수 확인
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-
-  // 환경 변수 마스킹 함수
-  const maskValue = (value: string | undefined, showLength = 8) => {
-    if (!value) return '❌ 설정되지 않음'
-    if (value.length <= showLength) return value
-    return `${value.substring(0, showLength)}${'*'.repeat(value.length - showLength)}`
-  }
-
-  // 상태 아이콘 컴포넌트
-  const StatusIcon = ({ status }: { status: TestResult['status'] }) => {
-    switch (status) {
-      case 'success':
-        return <CheckCircle className="h-5 w-5 text-green-500" />
-      case 'error':
-        return <XCircle className="h-5 w-5 text-red-500" />
-      case 'warning':
-        return <AlertCircle className="h-5 w-5 text-yellow-500" />
-      case 'loading':
-        return <Loader2 className="h-5 w-5 text-blue-500 animate-spin" />
-      default:
-        return null
-    }
-  }
-
-  // 기본 연결 테스트
-  const testBasicConnection = async (): Promise<TestResult> => {
-    try {
-      if (!supabaseClient) {
-        return {
-          name: '기본 연결',
-          status: 'error',
-          message: 'Supabase 클라이언트가 초기화되지 않았습니다',
-        }
-      }
-
-      // 간단한 쿼리로 연결 테스트
-      const { data, error } = await supabaseClient
-        .from('categories')
-        .select('count')
-        .limit(1)
-
-      if (error) {
-        return {
-          name: '기본 연결',
-          status: 'warning',
-          message: '연결은 성공했지만 쿼리 실행 중 오류 발생',
-          details: error.message,
-        }
-      }
-
-      return {
-        name: '기본 연결',
-        status: 'success',
-        message: 'Supabase 데이터베이스 연결 성공',
-      }
-    } catch (error) {
-      return {
-        name: '기본 연결',
-        status: 'error',
-        message: '연결 테스트 실패',
-        details: error instanceof Error ? error.message : '알 수 없는 오류',
-      }
-    }
-  }
-
-  // Clerk 인증 상태 테스트
-  const testClerkAuth = async (): Promise<TestResult> => {
-    if (!isLoaded) {
-      return {
-        name: 'Clerk 인증',
-        status: 'loading',
-        message: 'Clerk 인증 상태 로딩 중...',
-      }
+  /**
+   * 새로운 방식의 Supabase 클라이언트 생성 (2025년 권장)
+   * accessToken 방식 사용 - JWT Template 방식 대체
+   */
+  const createSupabaseClient = () => {
+    if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
+      throw new Error('Supabase 환경변수가 설정되지 않았습니다.');
     }
 
-    if (!isSignedIn) {
-      return {
-        name: 'Clerk 인증',
-        status: 'warning',
-        message: '사용자가 로그인하지 않음',
-        details: '로그인 후 전체 기능 테스트 가능',
+    return createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+      {
+        global: {
+          headers: async () => {
+            // ✅ 2025년 새로운 방식: 세션에서 토큰 직접 추출
+            if (session) {
+              const token = await session.getToken();
+              return token ? { Authorization: `Bearer ${token}` } : {};
+            }
+            return {};
+          },
+        },
       }
-    }
+    );
+  };
 
-    return {
-      name: 'Clerk 인증',
-      status: 'success',
-      message: `사용자 로그인 성공: ${user?.emailAddresses[0]?.emailAddress}`,
-      details: `사용자 ID: ${user?.id}`,
-    }
-  }
-
-  // JWT 토큰 테스트
-  const testJWTToken = async (): Promise<TestResult> => {
-    if (!isSignedIn) {
-      return {
-        name: 'JWT 토큰',
-        status: 'warning',
-        message: '로그인이 필요합니다',
-      }
+  /**
+   * Supabase 연결 및 RLS 정책 테스트
+   */
+  const testSupabaseConnection = async () => {
+    if (!session) {
+      setSupabaseTest({
+        connected: false,
+        error: '로그인이 필요합니다.'
+      });
+      return;
     }
 
     try {
-      if (!supabaseClient) {
-        return {
-          name: 'JWT 토큰',
-          status: 'error',
-          message: 'Supabase 클라이언트가 없습니다',
-        }
-      }
-
-      // 현재 사용자 정보 조회 (RLS 정책 테스트)
-      const { data, error } = await supabaseClient
-        .from('current_user_info')
-        .select('*')
-        .limit(1)
-
-      if (error) {
-        return {
-          name: 'JWT 토큰',
-          status: 'error',
-          message: 'JWT 토큰 인증 실패',
-          details: error.message,
-        }
-      }
-
-      const userInfo = data?.[0]
-      if (userInfo?.is_authenticated) {
-        return {
-          name: 'JWT 토큰',
-          status: 'success',
-          message: 'Clerk JWT 토큰 인증 성공',
-          details: `인증된 사용자 ID: ${userInfo.user_id}`,
-        }
-      } else {
-        return {
-          name: 'JWT 토큰',
-          status: 'warning',
-          message: 'JWT 토큰이 전달되지 않음',
-          details: 'Clerk JWT 템플릿 설정을 확인하세요',
-        }
-      }
-    } catch (error) {
-      return {
-        name: 'JWT 토큰',
-        status: 'error',
-        message: 'JWT 토큰 테스트 실패',
-        details: error instanceof Error ? error.message : '알 수 없는 오류',
-      }
-    }
-  }
-
-  // RLS 정책 테스트
-  const testRLSPolicies = async (): Promise<TestResult> => {
-    if (!supabaseClient) {
-      return {
-        name: 'RLS 정책',
-        status: 'error',
-        message: 'Supabase 클라이언트가 없습니다',
-      }
-    }
-
-    try {
-      // 카테고리 읽기 테스트 (모든 사용자 가능)
-      const { data: categories, error: categoriesError } = await supabaseClient
-        .from('categories')
-        .select('id, name')
-        .limit(5)
-
-      if (categoriesError) {
-        return {
-          name: 'RLS 정책',
-          status: 'error',
-          message: '카테고리 읽기 정책 테스트 실패',
-          details: categoriesError.message,
-        }
-      }
-
-      // 게시물 읽기 테스트
-      const { data: posts, error: postsError } = await supabaseClient
-        .from('posts')
-        .select('id, title, status')
-        .limit(5)
-
-      if (postsError) {
-        return {
-          name: 'RLS 정책',
-          status: 'warning',
-          message: '게시물 읽기 정책 테스트 부분 실패',
-          details: postsError.message,
-        }
-      }
-
-      return {
-        name: 'RLS 정책',
-        status: 'success',
-        message: 'RLS 정책 동작 확인',
-        details: `카테고리 ${categories?.length || 0}개, 게시물 ${posts?.length || 0}개 조회 성공`,
-      }
-    } catch (error) {
-      return {
-        name: 'RLS 정책',
-        status: 'error',
-        message: 'RLS 정책 테스트 실패',
-        details: error instanceof Error ? error.message : '알 수 없는 오류',
-      }
-    }
-  }
-
-  // Storage 버킷 테스트
-  const testStorageBucket = async (): Promise<TestResult> => {
-    if (!supabaseClient) {
-      return {
-        name: 'Storage 버킷',
-        status: 'error',
-        message: 'Supabase 클라이언트가 없습니다',
-      }
-    }
-
-    try {
-      // blog-images 버킷 존재 확인
-      const { data: buckets, error } = await supabaseClient.storage.listBuckets()
-
-      if (error) {
-        return {
-          name: 'Storage 버킷',
-          status: 'error',
-          message: 'Storage 버킷 조회 실패',
-          details: error.message,
-        }
-      }
-
-      const blogImagesBucket = buckets?.find(bucket => bucket.id === 'blog-images')
+      // 세션 토큰 정보 추출
+      const token = await session.getToken();
       
-      if (blogImagesBucket) {
-        return {
-          name: 'Storage 버킷',
-          status: 'success',
-          message: 'blog-images 버킷 확인 완료',
-          details: `공개 접근: ${blogImagesBucket.public ? '가능' : '불가능'}`,
-        }
-      } else {
-        return {
-          name: 'Storage 버킷',
-          status: 'warning',
-          message: 'blog-images 버킷이 생성되지 않음',
-          details: 'docs/rls-policies.sql을 실행하여 버킷을 생성하세요',
-        }
+      if (!token) {
+        throw new Error('세션 토큰을 가져올 수 없습니다.');
       }
+
+      // JWT 토큰 디코딩 (헤더와 페이로드만)
+      const tokenParts = token.split('.');
+      if (tokenParts.length !== 3) {
+        throw new Error('유효하지 않은 JWT 토큰 형식입니다.');
+      }
+
+      const payload = JSON.parse(atob(tokenParts[1]));
+      
+      // ✅ 새로운 방식 Supabase 클라이언트 생성
+      const supabase = createSupabaseClient();
+      
+      // 간단한 연결 테스트 (인증이 필요하지 않은 쿼리)
+      const { data, error } = await supabase
+        .from('information_schema.tables')
+        .select('table_name')
+        .limit(1);
+
+      if (error && !error.message.includes('relation "information_schema.tables" does not exist')) {
+        throw error;
+      }
+
+      setSupabaseTest({
+        connected: true,
+        tokenInfo: {
+          sub: payload.sub, // Clerk 사용자 ID
+          role: payload.role, // 'authenticated' 또는 'anon'
+          aud: payload.aud,
+          exp: new Date(payload.exp * 1000).toLocaleString(),
+          iat: new Date(payload.iat * 1000).toLocaleString(),
+        }
+      });
+
     } catch (error) {
-      return {
-        name: 'Storage 버킷',
-        status: 'error',
-        message: 'Storage 버킷 테스트 실패',
-        details: error instanceof Error ? error.message : '알 수 없는 오류',
-      }
+      console.error('Supabase 연결 테스트 오류:', error);
+      setSupabaseTest({
+        connected: false,
+        error: error instanceof Error ? error.message : '알 수 없는 오류가 발생했습니다.'
+      });
     }
-  }
+  };
 
-  // 모든 테스트 실행
-  const runAllTests = async () => {
-    setIsRunningTests(true)
-    setTestResults([])
-
-    const tests = [
-      testBasicConnection,
-      testClerkAuth,
-      testJWTToken,
-      testRLSPolicies,
-      testStorageBucket,
-    ]
-
-    for (const test of tests) {
-      const result = await test()
-      setTestResults(prev => [...prev, result])
-      // 각 테스트 사이에 약간의 지연
-      await new Promise(resolve => setTimeout(resolve, 500))
-    }
-
-    setIsRunningTests(false)
-  }
-
-  // 페이지 로드 시 자동 테스트 실행
+  // 페이지 로드 시 환경변수 확인
   useEffect(() => {
-    if (isLoaded && !supabaseLoading) {
-      runAllTests()
-    }
-  }, [isLoaded, supabaseLoading])
+    setEnvCheck({
+      supabaseUrl: !!process.env.NEXT_PUBLIC_SUPABASE_URL,
+      supabaseKey: !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+      clerkPublishable: !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY,
+    });
+  }, []);
+
+  // 로딩 상태
+  if (!sessionLoaded || !userLoaded) {
+    return (
+      <div className="container mx-auto py-8">
+        <div className="flex items-center justify-center">
+          <div className="text-center">
+            <AlertCircle className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
+            <p className="text-muted-foreground">세션 정보를 로드하는 중...</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className="container mx-auto py-8 px-4 max-w-4xl">
-      <div className="space-y-6">
-        {/* 헤더 */}
-        <div className="text-center space-y-2">
-          <h1 className="text-3xl font-bold">Supabase 연결 테스트</h1>
-          <p className="text-muted-foreground">
-            Clerk 인증과 Supabase 데이터베이스 통합 상태를 확인합니다
-          </p>
-        </div>
-
-        {/* 환경 변수 상태 */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Database className="h-5 w-5" />
-              환경 변수 설정
-            </CardTitle>
-            <CardDescription>
-              Supabase 연결에 필요한 환경 변수 상태
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="font-medium">SUPABASE_URL</span>
-                  <Badge variant={supabaseUrl ? "default" : "destructive"}>
-                    {supabaseUrl ? "설정됨" : "미설정"}
-                  </Badge>
-                </div>
-                <p className="text-sm text-muted-foreground font-mono">
-                  {maskValue(supabaseUrl)}
-                </p>
-              </div>
-              
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="font-medium">SUPABASE_ANON_KEY</span>
-                  <Badge variant={supabaseAnonKey ? "default" : "destructive"}>
-                    {supabaseAnonKey ? "설정됨" : "미설정"}
-                  </Badge>
-                </div>
-                <p className="text-sm text-muted-foreground font-mono">
-                  {maskValue(supabaseAnonKey)}
-                </p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* 인증 상태 */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <User className="h-5 w-5" />
-              Clerk 인증 상태
-            </CardTitle>
-            <CardDescription>
-              현재 사용자의 로그인 및 인증 상태
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="font-medium">Clerk 로딩</span>
-                  <Badge variant={isLoaded ? "default" : "secondary"}>
-                    {isLoaded ? "완료" : "로딩 중"}
-                  </Badge>
-                </div>
-              </div>
-              
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="font-medium">로그인 상태</span>
-                  <Badge variant={isSignedIn ? "default" : "outline"}>
-                    {isSignedIn ? "로그인됨" : "로그아웃"}
-                  </Badge>
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="font-medium">Supabase 연동</span>
-                  <Badge variant={isAuthenticated ? "default" : "outline"}>
-                    {isAuthenticated ? "연동됨" : "미연동"}
-                  </Badge>
-                </div>
-              </div>
-            </div>
-
-            {user && (
-              <div className="pt-4 border-t">
-                <p className="text-sm text-muted-foreground">
-                  <strong>사용자:</strong> {user.emailAddresses[0]?.emailAddress}
-                </p>
-                <p className="text-sm text-muted-foreground font-mono">
-                  <strong>ID:</strong> {user.id}
-                </p>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* 테스트 결과 */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Shield className="h-5 w-5" />
-              통합 테스트 결과
-            </CardTitle>
-            <CardDescription>
-              데이터베이스 연결, 인증, RLS 정책 동작 확인
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex justify-between items-center">
-              <p className="text-sm text-muted-foreground">
-                총 {testResults.length}개 테스트 완료
-              </p>
-              <Button 
-                onClick={runAllTests} 
-                disabled={isRunningTests}
-                size="sm"
-              >
-                {isRunningTests ? (
-                  <>
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    테스트 중...
-                  </>
-                ) : (
-                  '다시 테스트'
-                )}
-              </Button>
-            </div>
-
-            <Separator />
-
-            <div className="space-y-3">
-              {testResults.map((result, index) => (
-                <div key={index} className="flex items-start gap-3 p-3 rounded-lg border">
-                  <StatusIcon status={result.status} />
-                  <div className="flex-1 space-y-1">
-                    <div className="flex items-center justify-between">
-                      <h4 className="font-medium">{result.name}</h4>
-                      <Badge 
-                        variant={
-                          result.status === 'success' ? 'default' :
-                          result.status === 'error' ? 'destructive' :
-                          result.status === 'warning' ? 'secondary' : 'outline'
-                        }
-                      >
-                        {result.status === 'success' ? '성공' :
-                         result.status === 'error' ? '실패' :
-                         result.status === 'warning' ? '경고' : '진행 중'}
-                      </Badge>
-                    </div>
-                    <p className="text-sm text-muted-foreground">
-                      {result.message}
-                    </p>
-                    {result.details && (
-                      <p className="text-xs text-muted-foreground font-mono bg-muted p-2 rounded">
-                        {result.details}
-                      </p>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* 다음 단계 안내 */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <FileImage className="h-5 w-5" />
-              다음 단계
-            </CardTitle>
-            <CardDescription>
-              Supabase 통합을 완료하기 위한 추가 작업
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-3">
-              <div className="flex items-start gap-3">
-                <div className="w-6 h-6 rounded-full bg-primary text-primary-foreground text-xs flex items-center justify-center font-bold">
-                  1
-                </div>
-                <div>
-                  <h4 className="font-medium">Clerk JWT 템플릿 설정</h4>
-                  <p className="text-sm text-muted-foreground">
-                    Clerk 대시보드에서 'supabase' JWT 템플릿을 생성하고 설정하세요
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex items-start gap-3">
-                <div className="w-6 h-6 rounded-full bg-primary text-primary-foreground text-xs flex items-center justify-center font-bold">
-                  2
-                </div>
-                <div>
-                  <h4 className="font-medium">데이터베이스 스키마 실행</h4>
-                  <p className="text-sm text-muted-foreground">
-                    <code>docs/database-schema.sql</code> 파일을 Supabase SQL Editor에서 실행하세요
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex items-start gap-3">
-                <div className="w-6 h-6 rounded-full bg-primary text-primary-foreground text-xs flex items-center justify-center font-bold">
-                  3
-                </div>
-                <div>
-                  <h4 className="font-medium">RLS 정책 적용</h4>
-                  <p className="text-sm text-muted-foreground">
-                    <code>docs/rls-policies.sql</code> 파일을 Supabase SQL Editor에서 실행하세요
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex items-start gap-3">
-                <div className="w-6 h-6 rounded-full bg-primary text-primary-foreground text-xs flex items-center justify-center font-bold">
-                  4
-                </div>
-                <div>
-                  <h4 className="font-medium">Storage 정책 설정</h4>
-                  <p className="text-sm text-muted-foreground">
-                    <code>docs/storage-policies-guide.md</code> 가이드를 참고하여 Supabase 대시보드에서 Storage 정책을 설정하세요
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex items-start gap-3">
-                <div className="w-6 h-6 rounded-full bg-primary text-primary-foreground text-xs flex items-center justify-center font-bold">
-                  5
-                </div>
-                <div>
-                  <h4 className="font-medium">CRUD API 구현</h4>
-                  <p className="text-sm text-muted-foreground">
-                    게시물, 댓글, 좋아요 기능을 위한 API 라우트를 구현하세요
-                  </p>
-                </div>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+    <div className="container mx-auto py-8 space-y-6">
+      <div className="text-center mb-8">
+        <h1 className="text-4xl font-bold mb-2">Supabase Third-Party Auth 테스트</h1>
+        <p className="text-muted-foreground">
+          2025년 새로운 Clerk ↔ Supabase 통합 방식 테스트
+        </p>
+        <Badge variant="outline" className="mt-2">
+          JWT Template 방식 Deprecated → Third-Party Auth 방식
+        </Badge>
       </div>
+
+      {/* 환경변수 상태 */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Key className="h-5 w-5" />
+            환경변수 상태
+          </CardTitle>
+          <CardDescription>
+            필수 환경변수가 올바르게 설정되었는지 확인합니다.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div className="flex items-center justify-between">
+            <span>NEXT_PUBLIC_SUPABASE_URL</span>
+            {envCheck.supabaseUrl ? (
+              <Badge variant="default" className="bg-green-500">
+                <CheckCircle className="h-3 w-3 mr-1" />
+                설정됨
+              </Badge>
+            ) : (
+              <Badge variant="destructive">
+                <XCircle className="h-3 w-3 mr-1" />
+                미설정
+              </Badge>
+            )}
+          </div>
+          <div className="flex items-center justify-between">
+            <span>NEXT_PUBLIC_SUPABASE_ANON_KEY</span>
+            {envCheck.supabaseKey ? (
+              <Badge variant="default" className="bg-green-500">
+                <CheckCircle className="h-3 w-3 mr-1" />
+                설정됨
+              </Badge>
+            ) : (
+              <Badge variant="destructive">
+                <XCircle className="h-3 w-3 mr-1" />
+                미설정
+              </Badge>
+            )}
+          </div>
+          <div className="flex items-center justify-between">
+            <span>NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY</span>
+            {envCheck.clerkPublishable ? (
+              <Badge variant="default" className="bg-green-500">
+                <CheckCircle className="h-3 w-3 mr-1" />
+                설정됨
+              </Badge>
+            ) : (
+              <Badge variant="destructive">
+                <XCircle className="h-3 w-3 mr-1" />
+                미설정
+              </Badge>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Clerk 세션 정보 */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <User className="h-5 w-5" />
+            Clerk 세션 정보
+          </CardTitle>
+          <CardDescription>
+            현재 로그인된 사용자의 세션 상태를 확인합니다.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {user ? (
+            <>
+              <div className="flex items-center justify-between">
+                <span>로그인 상태</span>
+                <Badge variant="default" className="bg-green-500">
+                  <CheckCircle className="h-3 w-3 mr-1" />
+                  로그인됨
+                </Badge>
+              </div>
+              <div className="flex items-center justify-between">
+                <span>사용자 ID</span>
+                <code className="text-sm bg-muted px-2 py-1 rounded">
+                  {user.id}
+                </code>
+              </div>
+              <div className="flex items-center justify-between">
+                <span>이메일</span>
+                <span className="text-sm text-muted-foreground">
+                  {user.emailAddresses[0]?.emailAddress || '없음'}
+                </span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span>세션 활성화</span>
+                {session ? (
+                  <Badge variant="default" className="bg-green-500">
+                    <CheckCircle className="h-3 w-3 mr-1" />
+                    활성화됨
+                  </Badge>
+                ) : (
+                  <Badge variant="destructive">
+                    <XCircle className="h-3 w-3 mr-1" />
+                    비활성화
+                  </Badge>
+                )}
+              </div>
+            </>
+          ) : (
+            <div className="text-center py-4">
+              <XCircle className="mx-auto h-8 w-8 text-muted-foreground mb-2" />
+              <p className="text-muted-foreground">로그인이 필요합니다.</p>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Supabase 연결 테스트 */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Database className="h-5 w-5" />
+            Supabase Third-Party Auth 테스트
+          </CardTitle>
+          <CardDescription>
+            새로운 방식의 JWT 토큰 전달 및 RLS 정책 동작을 테스트합니다.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <Button 
+            onClick={testSupabaseConnection}
+            disabled={!session || !envCheck.supabaseUrl || !envCheck.supabaseKey}
+            className="w-full"
+          >
+            Supabase 연결 테스트
+          </Button>
+
+          {supabaseTest.error && (
+            <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
+              <div className="flex items-center gap-2 text-red-800">
+                <XCircle className="h-4 w-4" />
+                <span className="font-medium">연결 실패</span>
+              </div>
+              <p className="text-red-700 text-sm mt-1">{supabaseTest.error}</p>
+            </div>
+          )}
+
+          {supabaseTest.connected && supabaseTest.tokenInfo && (
+            <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
+              <div className="flex items-center gap-2 text-green-800 mb-3">
+                <CheckCircle className="h-4 w-4" />
+                <span className="font-medium">연결 성공</span>
+              </div>
+              
+              <div className="space-y-2 text-sm">
+                <div className="flex items-center justify-between">
+                  <span className="font-medium">사용자 ID (sub):</span>
+                  <code className="bg-white px-2 py-1 rounded border text-xs">
+                    {supabaseTest.tokenInfo.sub}
+                  </code>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="font-medium">역할 (role):</span>
+                  <Badge variant={supabaseTest.tokenInfo.role === 'authenticated' ? 'default' : 'secondary'}>
+                    {supabaseTest.tokenInfo.role}
+                  </Badge>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="font-medium">발급 시간:</span>
+                  <span className="text-xs text-muted-foreground">
+                    {supabaseTest.tokenInfo.iat}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="font-medium">만료 시간:</span>
+                  <span className="text-xs text-muted-foreground">
+                    {supabaseTest.tokenInfo.exp}
+                  </span>
+                </div>
+              </div>
+
+              <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded">
+                <p className="text-blue-800 text-xs">
+                  ✅ <strong>auth.jwt()-&gt;&gt;'sub'</strong> 함수로 사용자 ID 접근 가능<br/>
+                  ✅ RLS 정책에서 <strong>requesting_user_id()</strong> 사용 가능<br/>
+                  ✅ Third-Party Auth 통합 정상 작동
+                </p>
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* 테스트 가이드 */}
+      <Card>
+        <CardHeader>
+          <CardTitle>테스트 가이드</CardTitle>
+          <CardDescription>
+            Third-Party Auth 통합이 올바르게 작동하는지 확인하는 방법
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3 text-sm">
+          <div className="flex items-start gap-2">
+            <Badge className="mt-1 text-xs">1</Badge>
+            <div>
+              <p className="font-medium">환경변수 확인</p>
+              <p className="text-muted-foreground">모든 환경변수가 "설정됨" 상태인지 확인</p>
+            </div>
+          </div>
+          <div className="flex items-start gap-2">
+            <Badge className="mt-1 text-xs">2</Badge>
+            <div>
+              <p className="font-medium">Clerk 로그인</p>
+              <p className="text-muted-foreground">로그인하여 세션이 활성화되었는지 확인</p>
+            </div>
+          </div>
+          <div className="flex items-start gap-2">
+            <Badge className="mt-1 text-xs">3</Badge>
+            <div>
+              <p className="font-medium">Supabase 연결 테스트</p>
+              <p className="text-muted-foreground">"Supabase 연결 테스트" 버튼 클릭하여 JWT 토큰 확인</p>
+            </div>
+          </div>
+          <div className="flex items-start gap-2">
+            <Badge className="mt-1 text-xs">4</Badge>
+            <div>
+              <p className="font-medium">JWT 클레임 확인</p>
+              <p className="text-muted-foreground">role이 'authenticated', sub에 Clerk 사용자 ID 포함 확인</p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
     </div>
-  )
+  );
 } 

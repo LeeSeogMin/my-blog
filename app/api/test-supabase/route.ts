@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { createServerClient } from '@/lib/supabase-server';
+import { createServerSupabaseClient } from '@/lib/supabase-server';
 import { auth } from '@clerk/nextjs/server';
 
 export async function GET() {
@@ -11,7 +11,7 @@ export async function GET() {
     console.log('Clerk 사용자 ID:', userId);
     
     // Supabase 클라이언트 생성
-    const supabase = createServerClient();
+    const supabase = await createServerSupabaseClient();
     console.log('Supabase 클라이언트 생성 완료');
     
     // 간단한 쿼리 테스트

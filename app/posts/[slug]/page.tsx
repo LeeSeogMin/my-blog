@@ -1,18 +1,27 @@
 /**
- * 블로그 포스트 상세 페이지
+ * 블로그 포스트 상세 페이지 (2025년 새로운 Third-Party Auth 방식)
  * 동적 라우팅을 통해 개별 포스트의 상세 내용을 표시
+ * 실제 Supabase 데이터베이스와 연동
  */
 
 import Link from 'next/link';
 import Image from 'next/image';
 import { notFound } from 'next/navigation';
-import { createServerClient } from '@/lib/supabase-server';
+import { createServerSupabaseClient } from '@/lib/supabase-server';
 import MarkdownContent from '@/components/blog/markdown-content';
 import RelatedPosts from '@/components/blog/related-posts';
 import LikeButton from '@/components/blog/like-button';
 import type { Metadata } from 'next';
-import type { Posts, Categories } from '@/types/database.types';
+import { Database } from '@/types/database.types';
 import { getRelativeTime } from '@/lib/utils';
+
+// 타입 정의
+type Post = Database['public']['Tables']['posts']['Row'];
+type Category = Database['public']['Tables']['categories']['Row'];
+
+type PostWithCategory = Post & {
+  categories?: Category | null;
+};
 
 // 페이지 props 타입 정의
 type PageProps = {
@@ -24,7 +33,10 @@ type PageProps = {
 // 정적 경로 생성 함수
 export async function generateStaticParams() {
   try {
-    const supabase = createServerClient();
+    console.log('=== 정적 경로 생성 시작 ===');
+    
+    // 2025년 새로운 Third-Party Auth 방식 Supabase 클라이언트 생성
+    const supabase = await createServerSupabaseClient();
     
     const { data: posts, error } = await supabase
       .from('posts')
@@ -36,6 +48,7 @@ export async function generateStaticParams() {
       return [];
     }
 
+    console.log(`✅ 정적 경로 ${posts?.length || 0}개 생성`);
     return (posts || []).map((post) => ({
       slug: post.slug,
     }));
@@ -52,12 +65,21 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   const slug = decodeURIComponent(rawSlug);
   
   try {
-    const supabase = createServerClient();
+    console.log('=== 메타데이터 생성 시작 ===', slug);
+    
+    // 2025년 새로운 Third-Party Auth 방식 Supabase 클라이언트 생성
+    const supabase = await createServerSupabaseClient();
     
     const { data: post, error } = await supabase
       .from('posts')
       .select(`
-        *,
+        id,
+        title,
+        content,
+        slug,
+        cover_image_url,
+        created_at,
+        updated_at,
         categories (
           id,
           name,
@@ -69,41 +91,43 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
       .single();
   
     if (error || !post) {
-    return {
-      title: '포스트를 찾을 수 없습니다 | My Blog',
-    };
-  }
+      console.log('❌ 메타데이터 생성 실패: 게시물 없음');
+      return {
+        title: '포스트를 찾을 수 없습니다 | My Blog',
+      };
+    }
 
     // 게시물 내용에서 요약 생성 (첫 200자)
     const excerpt = post.content.substring(0, 200).replace(/[#*`]/g, '') + '...';
 
-  return {
-    title: `${post.title} | My Blog`,
+    console.log('✅ 메타데이터 생성 완료:', post.title);
+    return {
+      title: `${post.title} | My Blog`,
       description: excerpt,
       authors: [{ name: '작성자' }], // Clerk에서 가져올 예정
-    openGraph: {
-      title: post.title,
+      openGraph: {
+        title: post.title,
         description: excerpt,
-      type: 'article',
+        type: 'article',
         publishedTime: post.created_at,
         modifiedTime: post.updated_at,
         authors: ['작성자'],
         images: post.cover_image_url ? [
-        {
+          {
             url: post.cover_image_url,
-          width: 1200,
-          height: 630,
-          alt: post.title,
-        }
-      ] : [],
-    },
-    twitter: {
-      card: 'summary_large_image',
-      title: post.title,
+            width: 1200,
+            height: 630,
+            alt: post.title,
+          }
+        ] : [],
+      },
+      twitter: {
+        card: 'summary_large_image',
+        title: post.title,
         description: excerpt,
         images: post.cover_image_url ? [post.cover_image_url] : [],
-    },
-  };
+      },
+    };
   } catch (error) {
     console.error('메타데이터 생성 중 오류 발생:', error);
     return {
@@ -113,7 +137,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
 }
 
 // 포스트 헤더 컴포넌트
-function PostHeader({ post }: { post: any }) {
+function PostHeader({ post }: { post: PostWithCategory & { author: any } }) {
   return (
     <header className="mb-12">
       {/* 뒤로 가기 링크 */}
@@ -163,10 +187,10 @@ function PostHeader({ post }: { post: any }) {
         <div className="flex flex-col text-sm text-muted-foreground">
           <div className="flex items-center gap-4">
             <span>📅 {getRelativeTime(post.created_at)}</span>
-            <span>📖 {Math.ceil(post.content.length / 200)}분 읽기</span>
-            <span>👀 {post.view_count.toLocaleString()}</span>
+            <span>📖 {Math.ceil((post.content?.length || 0) / 200)}분 읽기</span>
+            <span>👀 {(post.view_count || 0).toLocaleString()}</span>
           </div>
-          {new Date(post.updated_at) > new Date(post.created_at) && (
+          {post.updated_at && new Date(post.updated_at) > new Date(post.created_at) && (
             <p className="text-xs mt-1">
               마지막 수정: {new Date(post.updated_at).toLocaleDateString('ko-KR')}
             </p>
@@ -189,15 +213,15 @@ function PostHeader({ post }: { post: any }) {
 
       {/* 카테고리 */}
       {post.categories && (
-      <div className="flex flex-wrap items-center gap-3 mb-8">
-        <Link
+        <div className="flex flex-wrap items-center gap-3 mb-8">
+          <Link
             href={`/categories/${post.categories.slug}`}
-          className="inline-flex items-center"
-        >
+            className="inline-flex items-center"
+          >
             <span className="px-3 py-1 rounded-full text-sm font-medium bg-primary/10 text-primary hover:bg-primary/20 transition-colors">
               📁 {post.categories.name}
-          </span>
-        </Link>
+            </span>
+          </Link>
         </div>
       )}
     </header>
@@ -205,7 +229,7 @@ function PostHeader({ post }: { post: any }) {
 }
 
 // 포스트 콘텐츠 컴포넌트
-function PostContent({ post }: { post: any }) {
+function PostContent({ post }: { post: PostWithCategory }) {
   return (
     <article className="mb-16">
       {/* 커버 이미지 */}
@@ -224,7 +248,7 @@ function PostContent({ post }: { post: any }) {
 
       {/* 마크다운 콘텐츠 */}
       <MarkdownContent 
-        content={post.content}
+        content={post.content || ''}
         size="lg"
         enableTableOfContents={true}
         className="mb-12"
@@ -272,34 +296,60 @@ export default async function PostDetailPage({ params }: PageProps) {
   const slug = decodeURIComponent(rawSlug);
   
   try {
-    // Supabase 클라이언트 생성
-    const supabase = createServerClient();
+    console.log('=== 게시물 상세 페이지: 데이터 조회 시작 ===', slug);
+    
+    // 2025년 새로운 Third-Party Auth 방식 Supabase 클라이언트 생성
+    const supabase = await createServerSupabaseClient();
   
-  // 포스트 데이터 가져오기
+    // 포스트 데이터 가져오기
     const { data: post, error } = await supabase
       .from('posts')
       .select(`
-        *,
+        id,
+        title,
+        content,
+        slug,
+        excerpt,
+        cover_image_url,
+        view_count,
+        created_at,
+        updated_at,
+        author_id,
+        category_id,
+        status,
         categories (
           id,
           name,
-          slug
+          slug,
+          description,
+          color,
+          created_at,
+          updated_at
         )
       `)
       .eq('slug', slug)
       .eq('status', 'published')
       .single();
   
-  // 포스트가 존재하지 않으면 404 반환
+    // 포스트가 존재하지 않으면 404 반환
     if (error || !post) {
-    notFound();
-  }
+      console.log('❌ 게시물 없음:', error?.message || 'Not found');
+      notFound();
+    }
+
+    console.log('✅ 게시물 조회 성공:', post.title);
 
     // 조회수 증가 (별도 요청으로 처리)
-    await supabase
-      .from('posts')
-      .update({ view_count: post.view_count + 1 })
-      .eq('id', post.id);
+    try {
+      await supabase
+        .from('posts')
+        .update({ view_count: (post.view_count || 0) + 1 })
+        .eq('id', post.id);
+      console.log('✅ 조회수 증가 완료');
+    } catch (viewError) {
+      console.error('조회수 증가 실패:', viewError);
+      // 조회수 증가 실패는 페이지 렌더링에 영향을 주지 않음
+    }
 
     // PostHeader와 PostContent에 맞는 데이터 형식으로 변환
     const transformedPost = {
@@ -309,16 +359,24 @@ export default async function PostDetailPage({ params }: PageProps) {
         name: '작성자', // Clerk에서 가져올 예정
         avatar: '/default-avatar.png',
         bio: null
-      }
+      },
+      // categories가 배열이므로 첫 번째 요소를 가져오거나 null로 설정
+      categories: Array.isArray(post.categories) && post.categories.length > 0 
+        ? post.categories[0] 
+        : null
     };
 
     // RelatedPosts 컴포넌트를 위한 BlogPost 타입으로 변환
+    const categoryData = Array.isArray(post.categories) && post.categories.length > 0 
+      ? post.categories[0] 
+      : null;
+
     const blogPost = {
       id: post.id,
       slug: post.slug,
       title: post.title,
-      content: post.content,
-      excerpt: post.content.substring(0, 200) + '...',
+      content: post.content || '',
+      excerpt: post.excerpt || post.content?.substring(0, 200) + '...' || '',
       publishedAt: post.created_at,
       updatedAt: post.updated_at,
       author: {
@@ -326,12 +384,12 @@ export default async function PostDetailPage({ params }: PageProps) {
         name: '작성자',
         email: 'admin@example.com'
       },
-      category: post.categories ? {
-        id: post.categories.id,
-        name: post.categories.name,
-        slug: post.categories.slug,
-        description: post.categories.description || undefined,
-        color: post.categories.color || '#6366f1'
+      category: categoryData ? {
+        id: categoryData.id,
+        name: categoryData.name,
+        slug: categoryData.slug,
+        description: '',
+        color: categoryData.color || '#6366f1'
       } : {
         id: 'uncategorized',
         name: '미분류',
@@ -342,49 +400,51 @@ export default async function PostDetailPage({ params }: PageProps) {
       tags: [],
       coverImage: post.cover_image_url || '/images/default-cover.jpg',
       images: [],
-      readingTime: Math.ceil(post.content.length / 1000),
-      viewCount: post.view_count,
+      readingTime: Math.ceil((post.content?.length || 0) / 1000),
+      viewCount: post.view_count || 0,
       likeCount: 0,
       featured: false,
       comments: [],
       draft: post.status !== 'published'
     };
 
-  return (
-    <div className="py-16">
-      <div className="max-w-4xl mx-auto">
-        {/* 포스트 헤더 */}
+    console.log('✅ 게시물 상세 페이지 데이터 준비 완료');
+
+    return (
+      <div className="py-16">
+        <div className="max-w-4xl mx-auto">
+          {/* 포스트 헤더 */}
           <PostHeader post={transformedPost} />
 
-        {/* 포스트 콘텐츠 */}
+          {/* 포스트 콘텐츠 */}
           <PostContent post={transformedPost} />
 
-        {/* 관련 포스트 - 새로운 컴포넌트 사용 */}
+          {/* 관련 포스트 */}
           <RelatedPosts currentPost={blogPost} />
 
-        {/* 다음 구현할 섹션들 */}
-        <div className="mt-16 pt-8 border-t">
-          <div className="text-center text-muted-foreground">
-            <p className="mb-4">💬 댓글 시스템은 곧 추가될 예정입니다. 👍 좋아요 기능은 이미 활성화되어 있어요!</p>
-            <div className="flex justify-center gap-4">
-              <Link
-                href="/posts"
-                className="inline-flex items-center justify-center rounded-lg bg-primary px-6 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
-              >
-                다른 글 보기
-              </Link>
-              <Link
-                href="/"
-                className="inline-flex items-center justify-center rounded-lg border border-input bg-background px-6 py-2 text-sm font-medium hover:bg-accent hover:text-accent-foreground transition-colors"
-              >
-                홈으로 돌아가기
-              </Link>
+          {/* 다음 구현할 섹션들 */}
+          <div className="mt-16 pt-8 border-t">
+            <div className="text-center text-muted-foreground">
+              <p className="mb-4">💬 댓글 시스템은 곧 추가될 예정입니다. 👍 좋아요 기능은 이미 활성화되어 있어요!</p>
+              <div className="flex justify-center gap-4">
+                <Link
+                  href="/posts"
+                  className="inline-flex items-center justify-center rounded-lg bg-primary px-6 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
+                >
+                  다른 글 보기
+                </Link>
+                <Link
+                  href="/"
+                  className="inline-flex items-center justify-center rounded-lg border border-input bg-background px-6 py-2 text-sm font-medium hover:bg-accent hover:text-accent-foreground transition-colors"
+                >
+                  홈으로 돌아가기
+                </Link>
+              </div>
             </div>
           </div>
         </div>
       </div>
-    </div>
-  );
+    );
   } catch (error) {
     console.error('게시물 조회 중 오류 발생:', error);
     notFound();
