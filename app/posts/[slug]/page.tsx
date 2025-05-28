@@ -235,13 +235,18 @@ function PostContent({ post }: { post: PostWithCategory }) {
       {/* 커버 이미지 */}
       {post.cover_image_url && (
         <div className="relative w-full h-64 md:h-80 lg:h-96 mb-8 rounded-xl overflow-hidden">
-          <Image
+          {/* <Image
             src={post.cover_image_url}
             alt={post.title}
             fill
             className="object-cover"
             priority
             sizes="(max-width: 768px) 100vw, (max-width: 1200px) 80vw, 70vw"
+          /> */}
+          <img
+            src={post.cover_image_url}
+            alt={post.title}
+            className="object-cover w-full h-full"
           />
         </div>
       )}

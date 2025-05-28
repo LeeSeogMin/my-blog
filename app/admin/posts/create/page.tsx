@@ -155,7 +155,8 @@ export default function CreatePostPage() {
         ...formData,
         excerpt,
         // category_id가 null이면 undefined로 변환 (API에서 처리하기 위해)
-        category_id: formData.category_id || undefined
+        category_id: formData.category_id || undefined,
+        featured_image: formData.cover_image_url
       };
 
       console.log('게시물 생성 요청:', postData);
