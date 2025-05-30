@@ -11,6 +11,8 @@ import { createServerSupabaseClient } from '@/lib/supabase-server';
 import MarkdownContent from '@/components/blog/markdown-content';
 import RelatedPosts from '@/components/blog/related-posts';
 import LikeButton from '@/components/blog/like-button';
+import PostAdminActions from '@/components/blog/post-admin-actions';
+import { auth } from '@clerk/nextjs/server';
 import type { Metadata } from 'next';
 import { Database } from '@/types/database.types';
 import { getRelativeTime } from '@/lib/utils';
@@ -35,8 +37,12 @@ export async function generateStaticParams() {
   try {
     console.log('=== 정적 경로 생성 시작 ===');
     
-    // 2025년 새로운 Third-Party Auth 방식 Supabase 클라이언트 생성
-    const supabase = await createServerSupabaseClient();
+    // 빌드 타임에는 인증 없이 공개 데이터만 조회
+    const { createClient } = await import('@supabase/supabase-js');
+    const supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+    );
     
     const { data: posts, error } = await supabase
       .from('posts')
@@ -67,8 +73,12 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   try {
     console.log('=== 메타데이터 생성 시작 ===', slug);
     
-    // 2025년 새로운 Third-Party Auth 방식 Supabase 클라이언트 생성
-    const supabase = await createServerSupabaseClient();
+    // 빌드 타임에는 인증 없이 공개 데이터만 조회
+    const { createClient } = await import('@supabase/supabase-js');
+    const supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+    );
     
     const { data: post, error } = await supabase
       .from('posts')
@@ -137,65 +147,43 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
 }
 
 // 포스트 헤더 컴포넌트
-function PostHeader({ post }: { post: PostWithCategory & { author: any } }) {
+function PostHeader({ post, isAuthor }: { post: PostWithCategory; isAuthor: boolean }) {
   return (
-    <header className="mb-12">
-      {/* 뒤로 가기 링크 */}
-      <div className="mb-6">
-        <Link
-          href="/posts"
-          className="inline-flex items-center gap-2 text-sm font-medium text-muted-foreground hover:text-primary transition-colors"
-        >
-          ← 모든 글 보기
-        </Link>
-      </div>
-
-      {/* 포스트 제목 */}
-      <h1 className="text-3xl md:text-4xl lg:text-5xl font-bold mb-6 leading-tight">
+    <header className="mb-8">
+      {/* 제목 */}
+      <h1 className="text-4xl md:text-5xl font-bold mb-6 leading-tight">
         {post.title}
       </h1>
 
-      {/* 포스트 메타 정보 */}
-      <div className="flex flex-col sm:flex-row sm:items-center gap-4 mb-6">
-        {/* 작성자 정보 */}
-        <div className="flex items-center gap-3">
-          {post.author.avatar ? (
-            <Image
-              src={post.author.avatar}
-              alt={post.author.name}
-              width={40}
-              height={40}
-              className="rounded-full"
-            />
-          ) : (
-            <div className="w-10 h-10 rounded-full bg-primary/20 flex items-center justify-center text-sm font-medium">
-              {post.author.name[0]}
+      {/* 관리자 액션 버튼 (작성자 본인에게만 표시) */}
+      {isAuthor && (
+        <div className="mb-6">
+          <PostAdminActions postId={post.id} postSlug={post.slug} />
+        </div>
+      )}
+
+      {/* 메타 정보 */}
+      <div className="flex flex-col sm:flex-row sm:items-center gap-4 mb-6 text-muted-foreground">
+        {/* 작성일 */}
+        <div className="flex items-center gap-2">
+          <span className="text-sm">📅</span>
+          <time className="text-sm">
+            {getRelativeTime(post.created_at)}
+          </time>
+        </div>
+
+        {/* 수정일 */}
+        {post.updated_at !== post.created_at && (
+          <>
+            <div className="hidden sm:block w-px h-4 bg-border" />
+            <div className="flex items-center gap-2">
+              <span className="text-sm">✏️</span>
+              <time className="text-sm">
+                수정됨: {getRelativeTime(post.updated_at)}
+              </time>
             </div>
-          )}
-          <div>
-            <p className="font-medium">{post.author.name}</p>
-            {post.author.bio && (
-              <p className="text-sm text-muted-foreground">{post.author.bio}</p>
-            )}
-          </div>
-        </div>
-
-        {/* 구분선 */}
-        <div className="hidden sm:block w-px h-8 bg-border" />
-
-        {/* 날짜 및 읽기 시간 정보 */}
-        <div className="flex flex-col text-sm text-muted-foreground">
-          <div className="flex items-center gap-4">
-            <span>📅 {getRelativeTime(post.created_at)}</span>
-            <span>📖 {Math.ceil((post.content?.length || 0) / 200)}분 읽기</span>
-            <span>👀 {(post.view_count || 0).toLocaleString()}</span>
-          </div>
-          {post.updated_at && new Date(post.updated_at) > new Date(post.created_at) && (
-            <p className="text-xs mt-1">
-              마지막 수정: {new Date(post.updated_at).toLocaleDateString('ko-KR')}
-            </p>
-          )}
-        </div>
+          </>
+        )}
 
         {/* 구분선 */}
         <div className="hidden sm:block w-px h-8 bg-border" />
@@ -235,14 +223,6 @@ function PostContent({ post }: { post: PostWithCategory }) {
       {/* 커버 이미지 */}
       {post.cover_image_url && (
         <div className="relative w-full h-64 md:h-80 lg:h-96 mb-8 rounded-xl overflow-hidden">
-          {/* <Image
-            src={post.cover_image_url}
-            alt={post.title}
-            fill
-            className="object-cover"
-            priority
-            sizes="(max-width: 768px) 100vw, (max-width: 1200px) 80vw, 70vw"
-          /> */}
           <img
             src={post.cover_image_url}
             alt={post.title}
@@ -272,22 +252,6 @@ function PostContent({ post }: { post: PostWithCategory }) {
               showCount={true}
             />
           </div>
-
-          {/* 소셜 공유 버튼 */}
-          <div>
-            <h3 className="text-lg font-semibold mb-3 sm:text-right">공유하기</h3>
-            <div className="flex gap-3">
-              <button className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors text-sm">
-                Twitter
-              </button>
-              <button className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm">
-                Facebook
-              </button>
-              <button className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors text-sm">
-                링크 복사
-              </button>
-            </div>
-          </div>
         </div>
       </div>
     </article>
@@ -301,50 +265,51 @@ export default async function PostDetailPage({ params }: PageProps) {
   const slug = decodeURIComponent(rawSlug);
   
   try {
-    console.log('=== 게시물 상세 페이지: 데이터 조회 시작 ===', slug);
+    console.log('=== 게시물 상세 페이지 접근 ===', slug);
+    
+    // Clerk 인증 정보 확인
+    const { userId } = await auth();
+    console.log('현재 사용자 ID:', userId);
     
     // 2025년 새로운 Third-Party Auth 방식 Supabase 클라이언트 생성
     const supabase = await createServerSupabaseClient();
-  
-    // 포스트 데이터 가져오기
+    
     const { data: post, error } = await supabase
       .from('posts')
       .select(`
-        id,
-        title,
-        content,
-        slug,
-        excerpt,
-        cover_image_url,
-        view_count,
-        created_at,
-        updated_at,
-        author_id,
-        category_id,
-        status,
+        *,
         categories (
           id,
           name,
           slug,
-          description,
-          color,
-          created_at,
-          updated_at
+          color
         )
       `)
       .eq('slug', slug)
       .eq('status', 'published')
       .single();
-  
-    // 포스트가 존재하지 않으면 404 반환
-    if (error || !post) {
-      console.log('❌ 게시물 없음:', error?.message || 'Not found');
+
+    if (error) {
+      console.error('게시물 조회 오류:', error);
+      if (error.code === 'PGRST116') {
+        console.log('❌ 게시물을 찾을 수 없음:', slug);
+        notFound();
+      }
+      throw error;
+    }
+
+    if (!post) {
+      console.log('❌ 게시물이 존재하지 않음');
       notFound();
     }
 
     console.log('✅ 게시물 조회 성공:', post.title);
 
-    // 조회수 증가 (별도 요청으로 처리)
+    // 작성자 권한 확인
+    const isAuthor = userId === post.author_id;
+    console.log('작성자 권한:', isAuthor, '(userId:', userId, 'vs author_id:', post.author_id, ')');
+
+    // 조회수 증가 (비동기 처리)
     try {
       await supabase
         .from('posts')
@@ -419,7 +384,7 @@ export default async function PostDetailPage({ params }: PageProps) {
       <div className="py-16">
         <div className="max-w-4xl mx-auto">
           {/* 포스트 헤더 */}
-          <PostHeader post={transformedPost} />
+          <PostHeader post={transformedPost} isAuthor={isAuthor} />
 
           {/* 포스트 콘텐츠 */}
           <PostContent post={transformedPost} />

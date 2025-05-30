@@ -1,21 +1,101 @@
-## 1. 댓글 시스템 데이터베이스 통합 완성
+- 자료와 동영상화면이 다를 수 있습니다. 자료가 제시하는 순서대로 진행하시면 됩니다.
+- 이 강의 자료를 my_blog에 [dev.md](http://dev.md) 파일로 저장하고 시작합니다.
+- github copilot agent  “claude-4-sonnet” 사용 권장; cursor ai 사용도 적극 추천합니다.
+- 동영상은 테스트 건너뛰지만 여러분들은 테스트하고 가세요.
 
-### 1.1. 현재 상황 분석
+**두 가지 방법이 있습니다.** 
 
-10장에서 게시물과 카테고리의 데이터베이스 연동을 완료했지만, 8-9장에서 구현한 댓글 시스템은 여전히 로컬 스토리지를 사용하고 있다. 11장에서는 댓글 시스템을 완전히 데이터베이스와 통합하여 다음과 같은 기능을 완성한다:
-
-- **영구 데이터 저장**: 댓글이 데이터베이스에 안전하게 저장됨
-- **사용자 간 공유**: 모든 사용자가 동일한 댓글을 확인 가능
-- **인증 통합**: Clerk 사용자 정보와 댓글 작성자 연동
-- **권한 관리**: 본인이 작성한 댓글만 수정/삭제 가능
-
-### 1.2. 프로젝트 전역 설정
-
-새로운 대화 세션에서 11장을 시작할 때 다음 설정을 적용한다:
-
-**프롬프트:**
+1. 인증시스템까지 성공한 수강생은 본인의 코드로 계속 합니다. 
+2. 실패한 분들은 아래와 같이 실행하여 코드를 다운받아 실습을 계속합니다: 단 최소 Clerk 인증은 받아야 한다. 
 
 ```
+# 1. 현재 위치 확인 (웹 폴더로 이동)
+cd C:\web
+
+# 2. 기존 my_blog 폴더가 있다면 삭제(직접 삭제 가능)
+C:\web>rmdir /s /q my_blog
+
+# 3. GitHub에서 클론하여 my_blog 폴더에 저장
+C:\web>git clone https://github.com/LeeSeogMin/my-blog.git my_blog
+
+# 4. 프로젝트 폴더로 이동
+cd my_blog
+
+# 5. 패키지 설치
+C:\web\my_blog>npm install
+
+# 6. 환경 변수 파일 생성: 루트 디렉토리에 직접 환경변수 파일을 생성하거나 아래와 같이 실행한다. 
+copy .env.local
+
+환경변수 파일에 아래와 같이 저장한다. 
+NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=본인 키
+CLERK_SECRET_KEY=본인 키
+
+NEXT_PUBLIC_CLERK_SIGN_IN_URL=/sign-in
+NEXT_PUBLIC_CLERK_SIGN_UP_URL=/sign-up
+NEXT_PUBLIC_CLERK_AFTER_SIGN_IN_URL=/
+NEXT_PUBLIC_CLERK_AFTER_SIGN_UP_URL=/
+
+# 7. 개발 서버 실행
+npm run dev
+```
+
+## 0. 개발 환경 점검 및 정리: 본인 파일로 실습하는 경우
+
+### 0.1. 버전 충돌 방지
+
+1. **package.json 확인**
+    - "dev" 스크립트에서 `-turbo` 옵션 제거
+    - 변경 전: `"dev": "next dev --turbo"`
+    - 변경 후: `"dev": "next dev"`
+
+1. **next.config.js 파일을 열어서 아래의 내용으로 교체함**
+    
+    ```
+    /** @type {import('next').NextConfig} */
+    const nextConfig = {}
+    
+    module.exports = nextConfig
+    ```
+    
+
+1. 캐시 정리 및 재설치: cmd에서 실행
+
+```
+cd C:\web
+
+C:\web>cd my_blog
+
+C:\web\my_blog>rmdir /s /q node_modules
+
+C:\web\my_blog>del package-lock.json
+
+C:\web\my_blog>rmdir /s /q .next
+
+C:\web\my_blog>npm cache clean --force
+
+C:\web\my_blog>npm install
+```
+
+### 0.2. 프로젝트 전역 설정
+
+새로운 대화 세션에서 10장을 시작할 때 다음 설정을 적용한다: 
+
+프로젝트의 맥락을 이해하게 한다. 
+
+**프롬프트**
+
+```jsx
+dev.md 파일에서 앞으로의 작업의 맥락을 파악한다. 
+```
+
+프로젝트에서 사용할 설정을 기억하게 한다. 
+
+**프롬프트**
+
+```
+### 프로젝트 전역 설정
+
 **프로젝트 전역 설정:**
 - 터미널 명령어: Command Prompt 사용 (PowerShell 사용 금지)
 - 파일 생성/수정/삭제: Command Prompt 명령어로 안내
@@ -24,1447 +104,1957 @@
 - 기본적인 에러 처리 포함
 - 초보자도 이해할 수 있는 수준으로 구현
 - 복잡한 고급 기능은 제외하고 기본적인 것만
+- **Clerk와 Supabase 통합 방식**: Clerk 도메인을 Supabase의 Third-Party Auth에 입력하여 JWKS URL 자동 참조. RLS 정책은 `requesting_user_id()`를 통해 `sub` 클레임 활용. Supabase 클라이언트는 `global.headers`로 JWT 전달: 이 사실은 2025년 4월 1일 변경되었기에 반드시 기억해야 한다. 
 
 **AI 실수 방지 체크리스트:**
-✓ Next.js App Router 경로 구조 정확히 사용 (app/ 디렉토리 기준)
-✓ 'use client' 지시문 필요한 컴포넌트에만 추가
-✓ import 경로는 절대경로(@/) 또는 상대경로 일관성 유지
-✓ TypeScript 타입 정의 누락 없이 구현
-✓ 존재하지 않는 라이브러리나 컴포넌트 사용 금지
-✓ 복잡한 상태 관리나 최적화 기법 사용 금지
+✓ Next.js App Router 경로 구조 정확히 사용 (app/ 디렉토리 기준)  
+✓ 'use client' 지시문 필요한 컴포넌트에만 추가  
+✓ import 경로는 절대경로(@/) 또는 상대경로 일관성 유지  
+✓ TypeScript 타입 정의 누락 없이 구현  
+✓ 존재하지 않는 라이브러리나 컴포넌트 사용 금지  
+✓ 복잡한 상태 관리나 최적화 기법 사용 금지  
 
 **프로젝트 맥락 정보:**
-- 8장 완료: 기본 블로그 구조, 댓글 시스템(로컬 스토리지), 좋아요 기능(로컬)
-- 9장 완료: Clerk 인증 시스템 통합, 권한 기반 댓글 관리
-- 10장 완료: Supabase 데이터베이스 연동, 게시물 CRUD, 이미지 업로드
-- 현재 사용 중: Next.js 15, TypeScript, TailwindCSS, ShadCN UI, Clerk, Supabase
-- 11장 목표: 댓글/좋아요 데이터베이스 통합, 소셜 기능 완성, Vercel 배포
+- 8장 완료: 기본 블로그 구조, 포스트 목록/상세 페이지, 검색 기능, 댓글 시스템(로컬), 좋아요 기능  
+- 9장 완료: Clerk 인증 시스템 통합, 권한 기반 댓글 관리  
+- 현재 사용 중: Next.js 15, TypeScript, TailwindCSS, ShadCN UI, Clerk  
+- 10장 목표: Supabase 데이터베이스 연동 및 이미지 업로드 시스템  
+- **MOCK 데이터 제거 원칙**: 모든 mockData import를 제거하고 Supabase로 대체  
+- **에러 처리**: try-catch로 감싸고 에러 시 빈 배열 반환  
+- **빈 상태 처리**: 데이터가 없을 때 안내 메시지 필수  
 
-이 설정을 기준으로 앞으로 모든 구현을 진행합니다.
+---
+
+위 설정을 메모리에 저장하고 다음 요청을 대기합니다.
 ```
 
-### 1.3. 댓글 API 라우트 구현
+## 1. 웹 애플리케이션에서 데이터베이스의 역할
 
-10장에서 생성한 comments 테이블을 활용하여 댓글 CRUD API를 구현한다.
+### 1.1. 데이터베이스를 사용하는 이유
 
-**프롬프트:**
+지금까지 블로그는 목업 데이터를 사용하여 동작했다. 하지만 실제 운영 환경에서는 사용자가 작성한 게시물, 댓글, 사용자 정보 등을 영구적으로 저장하고 관리해야 한다.
 
-```
-댓글 시스템을 위한 TypeScript API 라우트를 구현해 주세요.
+데이터베이스는 정보를 중앙화된 서버에서 체계적으로 관리하기 위해 사용한다. 블로그에서 관리해야 할 주요 데이터는 다음과 같다:
 
-**현재 상황:**
-- 10장에서 Supabase comments 테이블 생성 완료
-- 9장에서 Clerk 인증 시스템 통합 완료
-- 8장에서 구현한 로컬 스토리지 댓글 시스템을 데이터베이스로 전환 필요
+- **블로그 게시물**: 제목, 내용, 작성일, 커버 이미지
+- **사용자 정보**: 작성자 정보 (Clerk에서 관리)
+- **댓글**: 게시물에 달린 댓글들
+- **좋아요**: 사용자들의 게시물 좋아요 정보
 
-**구현 대상:**
-- 파일 경로: `app/api/comments/route.ts`
-- 파일 경로: `app/api/comments/[id]/route.ts`
-- 파일 역할: 댓글 CRUD 작업을 위한 API 엔드포인트
+모든 데이터를 중앙화된 데이터베이스 서버에서 관리하여, 여러 사용자가 동일한 시스템에 접속해도 데이터가 일관되게 유지된다. 예를 들어, 사용자가 새 게시물을 작성하면 데이터베이스에 저장되고, 다른 사용자들도 즉시 해당 게시물을 볼 수 있다.
 
-**주요 요구사항:**
-1. app/api/comments/route.ts
-   - GET: 특정 게시물의 댓글 목록 조회 (모든 사용자 접근 가능)
-   - POST: 새 댓글 작성 (Clerk 인증 필수)
+### 1.2. 데이터베이스의 핵심 특징
 
-2. app/api/comments/[id]/route.ts
-   - PUT: 댓글 수정 (작성자 본인만 가능)
-   - DELETE: 댓글 삭제 (작성자 본인만 가능)
+데이터베이스는 다음과 같은 특징을 가진다:
 
-3. Clerk 인증 통합
-   - auth() 함수를 통한 사용자 인증 확인
-   - 사용자 ID와 프로필 정보 연동
-   - 인증 실패 시 적절한 오류 응답
+- **구조화된 데이터**: 데이터는 테이블, 열, 행과 같은 구조화된 형식으로 저장
+- **쿼리 언어 지원**: SQL 같은 언어로 데이터 검색 및 조작
+- **데이터 무결성**: 잘못된 데이터가 저장되지 않도록 규칙 적용
 
-**기술적 요구사항:**
-- lib/supabase.ts에서 생성한 클라이언트 사용
-- Database 타입을 활용한 타입 안전성 확보
-- Clerk의 auth() 함수로 인증 처리
-- 기본적인 try-catch 에러 처리
+데이터베이스는 크게 두 가지 유형으로 나뉜다:
 
-**완료 기준:**
-- GET /api/comments?postId=... 로 댓글 조회 가능
-- POST /api/comments 로 댓글 작성 가능 (인증 필요)
-- PUT/DELETE 작성자 권한 확인 정상 동작
-- TypeScript 컴파일 오류 없음
-```
+1. **관계형 데이터베이스(RDBMS)**: MySQL, PostgreSQL
+    - 데이터를 테이블 형태로 관리하며, 스키마 필요
+    - 데이터 간의 관계를 명확히 정의
+2. **비관계형 데이터베이스(NoSQL)**: MongoDB, Redis
+    - 문서(Document)나 키-값(Key-Value) 형식으로 데이터 저장
 
-### 1.4. 댓글 컴포넌트 데이터베이스 연동
+### 1.3. 이미지 스토리지의 필요성
 
-8-9장에서 구현한 댓글 컴포넌트를 데이터베이스 기반으로 업그레이드한다.
+이미지와 동영상 같은 파일은 크기가 크기 때문에 데이터베이스에 직접 저장하는 것보다 별도의 스토리지에 저장하는 것이 효율적이다.
 
-**프롬프트:**
+일반적인 방식은 다음과 같다:
 
-```
-기존 댓글 컴포넌트를 데이터베이스 연동으로 업그레이드해 주세요.
+- **스토리지**: 실제 이미지 파일 저장
+- **데이터베이스**: 이미지의 저장 위치(URL)만 기록
 
-**현재 상황:**
-- 댓글 API 라우트 구현 완료
-- 8-9장에서 구현한 로컬 스토리지 기반 댓글 컴포넌트 존재
-- Clerk 인증 상태 관리 기능 존재
+예를 들어, 사용자가 블로그 게시물의 커버 이미지를 업로드하면:
 
-**구현 대상:**
-- 파일 경로: `components/blog/comment-section.tsx` (기존 파일 수정)
-- 파일 역할: 데이터베이스 기반 댓글 표시 및 작성
+1. 이미지 파일은 스토리지에 저장
+2. 데이터베이스의 posts 테이블에는 이미지 URL만 저장
+3. 게시물을 표시할 때 URL을 통해 이미지를 불러옴
 
-**주요 요구사항:**
-1. 데이터 소스 변경
-   - 로컬 스토리지에서 API 호출로 변경
-   - 댓글 조회, 작성, 수정, 삭제를 모두 API 통해 처리
-   - 실시간 데이터 동기화
+## 2. Supabase 소개 및 설정
 
-2. 기존 UI 구조 유지
-   - 9장에서 구현한 인증 기반 UI 구조 보존
-   - SignedIn/SignedOut 컴포넌트 활용 유지
-   - 작성자 정보 표시 로직 유지
+### 2.1. Supabase 선택 이유
 
-3. 새로운 기능 추가
-   - Clerk 프로필 이미지 표시
-   - 댓글 수정 기능 (작성자만)
-   - 댓글 삭제 기능 (작성자만)
-   - 로딩 상태 및 에러 처리 개선
+서비스 개발에 데이터베이스는 필수적이지만, 데이터베이스 서버를 직접 구축하고 관리하는 것은 복잡하고 비용이 많이 든다.
 
-**기술적 요구사항:**
-- 'use client' 컴포넌트로 구현
-- useState, useEffect로 상태 관리
-- Clerk의 useUser() 훅 활용
-- fetch API로 서버와 통신
+Supabase는 데이터베이스를 포함한 백엔드 서비스(BaaS)를 제공하여 개발자가 서버 설정 및 관리 부담을 줄이고, 애플리케이션 개발에 집중할 수 있도록 돕는다. 특히 서비스 초기에는 무료로 제공되어 비용 부담이 없다.
 
-**완료 기준:**
-- 댓글 목록이 데이터베이스에서 정상 로드
-- 댓글 작성 시 데이터베이스에 저장
-- 본인 댓글에만 수정/삭제 버튼 표시
-- 모든 CRUD 작업 정상 동작
-```
+### 2.2. Supabase의 주요 기능
 
-### 1.5. 댓글 수정 기능 구현
+**Database**
 
-**프롬프트:**
+- PostgreSQL 기반의 강력한 관계형 데이터베이스
+- 웹 기반 테이블 에디터 제공
+- SQL 에디터로 직접 쿼리 실행 가능
+
+**Storage**
+
+- 이미지, 동영상 등의 파일을 안전하게 저장
+- CDN을 통한 빠른 파일 제공
+- 간단한 업로드 API 제공
+
+**Authentication**
+
+- 다양한 소셜 로그인 지원 (우리는 Clerk 사용)
+- 사용자 관리 기능
+
+**무료 요금제 제공**
+
+- 5만명의 사용자
+- 500MB 데이터베이스
+- 1GB 파일 스토리지
+
+### 2.3. Supabase 프로젝트 생성
+
+AI를 활용하여 Supabase 프로젝트를 생성해보자.
 
 ```
-댓글 수정 기능을 구현해 주세요.
+Supabase 데이터베이스 설정 가이드
 
-**현재 상황:**
-- 댓글 컴포넌트 데이터베이스 연동 완료
-- 댓글 수정을 위한 UI 및 API 통합 필요
+****1. Supabase 계정 생성****
 
-**구현 대상:**
-- 파일 경로: `components/blog/comment-edit-form.tsx` (새로 생성)
-- 파일 역할: 댓글 인라인 수정 폼
+****Supabase 웹사이트 접속:****
+웹 브라우저를 열고 https://supabase.com 에 접속합니다.
+**회원가입 시작:**
+웹사이트 우측 상단 또는 중앙에 있는 "Start your project" 버튼을 클릭합니다.
 
-**주요 요구사항:**
-1. 인라인 편집 UI
-   - 수정 버튼 클릭 시 댓글 내용이 텍스트 영역으로 변경
-   - 저장/취소 버튼 표시
-   - 수정 중 다른 댓글은 일반 표시 유지
+회원가입 페이지로 이동하면, 일반적으로 다음과 같은 옵션으로 가입할 수 있습니다:
 
-2. 수정 처리 로직
-   - API를 통한 댓글 업데이트
-   - 성공 시 수정된 내용으로 즉시 업데이트
-   - 실패 시 원본 내용으로 복원
+****2. 새 Supabase 프로젝트 생성 과정****
 
-3. 사용자 경험 개선
-   - 수정 중 로딩 상태 표시
-   - 수정 취소 시 원본 내용 복원
-   - 키보드 단축키 지원 (ESC: 취소, Ctrl+Enter: 저장)
+****조직 생성:****
+**Name(조직 이름):**
+설정된 이름을 그대로 사용해도 되고 대학이름을 사용해도 됩니다.
+****Type (형태):****
+최초 가입 시에는 기본으로 생성된 "Personal" 조직을 선택하거나, 새로 조직을 생성할 수 있습니다. 개인 프로젝트라면 "Personal"을 그대로 사용하세요.
+****Pricing Plan (요금제):****
+초기 개발 단계에서는 **"Free Plan"**을 선택합니다.
 
-**기술적 요구사항:**
-- 기존 CommentItem 컴포넌트와 통합
-- 조건부 렌더링으로 편집 모드/일반 모드 전환
-- 기본적인 폼 검증 (빈 내용 방지)
+모든 정보를 입력했으면 페이지 하단의 "Create new organization" 버튼을 클릭합니다.
 
-**완료 기준:**
-- 본인 댓글에서 수정 기능 정상 동작
-- 수정 중/후 UI 상태 변화 자연스러움
-- 다른 사용자는 수정 기능 접근 불가
+****Project 생성:****
+****Project Name (프로젝트 이름):****
+권장 설정: my-blog-database
+프로젝트를 쉽게 식별할 수 있는 이름을 입력합니다. 이 이름은 Supabase 대시보드에서 프로젝트를 구분하는 데 사용됩니다.
+****Database Password (데이터베이스 비밀번호):****
+권장 설정: 안전한 비밀번호 생성
+****Region (지역):****
+권장 설정: Northeast Asia (Seoul)
 
-```
+모든 정보를 입력했으면 페이지 하단의 "Create new project" 버튼을 클릭합니다. 진행 표시줄이 나타나고 완료되면 대시보드로 자동 이동됩니다.
 
-### 확인: 댓글 시스템
+****3. 프로젝트 설정에서 확인해야 할 주요 정보 및 환경 변수 키****
+프로젝트 생성이 완료되면, 블로그 애플리케이션에서 Supabase 데이터베이스에 연결하기 위해 필요한 중요한 정보(키)들을 확인하고 메모해 두어야 합니다.
 
-브라우저에서 다음 2가지만 확인한다:
+**API 설정 페이지로 이동:**
+좌하단 메뉴에서 "View API settings" 아이콘을 클릭합니다.
 
-1. **데이터베이스 연동 확인**
-    - 댓글 작성 후 페이지 새로 고침해도 댓글이 유지되는가?
-    - 다른 브라우저에서 접속해도 댓글이 보이는가?
-2. **권한 관리 확인**
-    - 로그인한 사용자만 댓글 작성 가능한가?
-    - 본인이 작성한 댓글에만 수정/삭제 버튼이 나타나는가?
+확인 및 메모할 주요 정보:
+이 페이지에서 다음과 같은 정보들을 확인할 수 있습니다. 이 정보들은 나중에 .env.local 파일에 환경 변수로 설정하여 애플리케이션에서 사용하게 됩니다.
 
-## 2. 좋아요 기능 데이터베이스 통합
+**Project URL:** Supabase 프로젝트의 고유한 주소입니다.
+환경 변수명: NEXT_PUBLIC_SUPABASE_URL
+역할: 클라이언트(브라우저)와 서버 모두에서 Supabase에 요청을 보낼 때 사용됩니다.
 
-### 2.1. 좋아요 API 라우트 구현
+**Anon/Public Key (anon public)**: 익명(anonymous) 사용자를 위한 공개 키입니다.
+환경 변수명: NEXT_PUBLIC_SUPABASE_ANON_KEY
+역할: 클라이언트 사이드 코드(브라우저에서 실행되는 React 컴포넌트 등)에서 Supabase에 접근할 때 주로 사용됩니다.
 
-10장에서 생성한 likes 테이블을 활용하여 좋아요 기능을 데이터베이스와 연동한다.
-
-**프롬프트:**
-
-```
-좋아요 기능을 위한 TypeScript API 라우트를 구현해 주세요.
-
-**현재 상황:**
-- 10장에서 Supabase likes 테이블 생성 완료
-- 8장에서 구현한 로컬 스토리지 기반 좋아요 기능을 데이터베이스로 전환 필요
-
-**구현 대상:**
-- 파일 경로: `app/api/likes/route.ts`
-- 파일 역할: 좋아요 토글 및 상태 조회 API
-
-**주요 요구사항:**
-1. 좋아요 상태 조회 (GET)
-   - 특정 게시물의 전체 좋아요 수 반환
-   - 현재 사용자의 좋아요 여부 반환 (인증된 경우)
-   - 미인증 사용자도 좋아요 수는 조회 가능
-
-2. 좋아요 토글 (POST)
-   - 인증된 사용자만 접근 가능
-   - 이미 좋아요가 있으면 제거, 없으면 추가
-   - 중복 좋아요 방지 (unique constraint 활용)
-
-3. 응답 형식 통일
-   - { liked: boolean, totalLikes: number } 형태
-   - 에러 시 적절한 HTTP 상태 코드와 메시지
-
-**기술적 요구사항:**
-- Supabase의 upsert 또는 insert/delete 조합 사용
-- Clerk auth() 함수로 사용자 인증 확인
-- 트랜잭션 처리로 데이터 일관성 보장
-
-**완료 기준:**
-- GET /api/likes?postId=... 로 좋아요 상태 조회 가능
-- POST /api/likes 로 좋아요 토글 가능 (인증 필요)
-- 동시 접근 시에도 좋아요 수 정확성 유지
+**Service Role Key (service_role):** 서비스 역할 키(또는 시크릿 키)는 매우 강력한 권한을 가진 비밀 키입니다. 이 키는 절대로 외부에 노출되어서는 안 됩니다!
+환경 변수명: SUPABASE_SERVICE_ROLE_KEY
+화면에서 REVEAL 클릭 후 확인한다.
+역할: 서버 사이드 코드(Next.js API 라우트 등)에서 민감한 데이터 작업이나 RLS를 우회해야 하는 작업(예: 관리자 기능, 특정 사용자 데이터 강제 수정 등)을 수행할 때 사용됩니다.
 
 ```
 
-### 2.2. 좋아요 버튼 컴포넌트 업그레이드
+### 2.4. Next.js 프로젝트에 Supabase 연결
 
-8장에서 구현한 좋아요 버튼을 데이터베이스 기반으로 업그레이드한다.
+패키지 설치:
 
-**프롬프트:**
-
-```
-기존 좋아요 버튼 컴포넌트를 데이터베이스 연동으로 업그레이드해 주세요.
-
-**현재 상황:**
-- 좋아요 API 라우트 구현 완료
-- 8장에서 구현한 로컬 스토리지 기반 좋아요 버튼 존재
-- 게시물 목록과 상세 페이지에서 사용 중
-
-**구현 대상:**
-- 파일 경로: `components/blog/like-button.tsx` (기존 파일 수정)
-- 파일 역할: 데이터베이스 기반 좋아요 기능 제공
-
-**주요 요구사항:**
-1. 데이터 소스 변경
-   - 로컬 스토리지에서 API 호출로 변경
-   - 컴포넌트 마운트 시 서버에서 좋아요 상태 조회
-   - 좋아요 클릭 시 서버로 토글 요청
-
-2. 인증 상태 통합
-   - Clerk useUser() 훅으로 인증 상태 확인
-   - 미인증 사용자에게 로그인 안내 (SignInButton 활용)
-   - 인증된 사용자만 좋아요 기능 활성화
-
-3. 사용자 경험 개선
-   - 낙관적 업데이트: 클릭 즉시 UI 변경
-   - API 실패 시 원래 상태로 롤백
-   - 로딩 상태 표시 및 중복 클릭 방지
-
-**기술적 요구사항:**
-- 'use client' 컴포넌트로 구현
-- useState, useEffect로 상태 관리
-- 기존 UI 디자인 유지 (하트 아이콘, 애니메이션)
-
-**완료 기준:**
-- 페이지 로드 시 실제 좋아요 상태 표시
-- 좋아요 클릭 시 데이터베이스에 반영
-- 미인증 사용자에게 적절한 안내 제공
-- 모든 화면에서 일관된 동작
+```bash
+npm install @supabase/supabase-js
 
 ```
 
-### 2.3. 게시물 목록/상세 페이지 좋아요 통합
-
-기존 페이지들에 업그레이드된 좋아요 기능을 통합한다.
-
-**프롬프트:**
+환경 변수 설정 (`.env.local` 파일):
 
 ```
-게시물 목록과 상세 페이지에 업그레이드된 좋아요 기능을 통합해 주세요.
-
-**현재 상황:**
-- 좋아요 버튼 컴포넌트 데이터베이스 연동 완료
-- 10장에서 구현한 게시물 목록/상세 페이지 존재
-
-**구현 대상:**
-- 파일 경로: `app/posts/page.tsx` (기존 파일 수정)
-- 파일 경로: `app/posts/[slug]/page.tsx` (기존 파일 수정)
-- 파일 역할: 좋아요 기능이 통합된 게시물 표시
-
-**주요 요구사항:**
-1. 서버 사이드 데이터 통합
-   - 게시물 조회 시 좋아요 수도 함께 조회
-   - 초기 로딩 성능 최적화
-   - SEO를 위한 좋아요 수 서버 렌더링
-
-2. 클라이언트 컴포넌트 연동
-   - 업그레이드된 LikeButton 컴포넌트 활용
-   - 서버에서 가져온 초기 데이터를 LikeButton에 전달
-   - 클라이언트 사이드 상태 관리와 서버 데이터 동기화
-
-3. 성능 고려사항
-   - 불필요한 API 호출 최소화
-   - 좋아요 상태 변경 시 관련 컴포넌트만 리렌더링
-   - 기본적인 캐싱 전략 적용
-
-**기술적 요구사항:**
-- 기존 페이지 구조 및 디자인 유지
-- TypeScript 타입 안전성 확보
-- 서버 컴포넌트와 클라이언트 컴포넌트 적절한 분리
-
-**완료 기준:**
-- 목록 페이지에서 각 게시물의 좋아요 수 정확 표시
-- 상세 페이지에서 좋아요 기능 정상 동작
-- 좋아요 상태 변경 시 다른 페이지에도 반영
-
-```
-
-### 확인: 좋아요 시스템
-
-브라우저에서 다음 2가지만 확인한다:
-
-1. **데이터베이스 연동 확인**
-    - 좋아요 클릭 후 페이지 새로고침해도 상태가 유지되는가?
-    - 목록 페이지와 상세 페이지에서 좋아요 수가 일치하는가?
-2. **권한 관리 확인**
-    - 로그인하지 않은 상태에서 좋아요 클릭 시 로그인 안내가 나타나는가?
-    - 로그인 후 좋아요 기능이 정상 작동하는가?
-
-## 3. 검색 기능 데이터베이스 통합
-
-### 3.1. 검색 API 라우트 구현
-
-8장에서 구현한 기본 검색 기능을 데이터베이스 기반으로 업그레이드한다.
-
-**프롬프트:**
-
-```
-데이터베이스 기반 검색 API를 구현해 주세요.
-
-**현재 상황:**
-- 10장에서 Supabase posts 테이블 및 categories 테이블 구현 완료
-- 8장에서 목업 데이터 기반 검색 기능 구현
-
-**구현 대상:**
-- 파일 경로: `app/api/search/route.ts`
-- 파일 역할: 게시물 제목과 내용에서 키워드 검색
-
-**주요 요구사항:**
-1. 기본 검색 기능
-   - GET /api/search?q=검색어 형태로 요청 처리
-   - 게시물 제목과 내용에서 키워드 검색
-   - 대소문자 구분 없는 검색 (PostgreSQL ilike 연산자 활용)
-
-2. 검색 결과 최적화
-   - 관련성 높은 순서로 정렬 (제목 일치 > 내용 일치)
-   - 최대 20개 결과 반환
-   - 카테고리 정보 포함하여 반환
-
-3. 성능 고려사항
-   - 빈 검색어 또는 너무 짧은 검색어 처리
-   - 특수문자 이스케이프 처리
-   - 기본적인 쿼리 최적화
-
-**기술적 요구사항:**
-- Supabase의 textSearch 또는 ilike 연산자 사용
-- 검색 결과에 제목, 내용 일부, slug, 카테고리 정보 포함
-- TypeScript 타입 안전성 확보
-
-**완료 기준:**
-- 제목과 내용에서 키워드 검색 정상 동작
-- 검색 결과가 관련성 순으로 정렬
-- 빈 검색어 등 예외 상황 적절한 처리
-```
-
-### 3.2. 검색 컴포넌트 업그레이드
-
-8장에서 구현한 검색 UI를 데이터베이스 기반으로 업그레이드한다.
-
-**프롬프트:**
-
-```
-기존 검색 컴포넌트를 데이터베이스 연동으로 업그레이드해 주세요.
-
-**현재 상황:**
-- 검색 API 라우트 구현 완료
-- 8장에서 구현한 기본 검색 UI 존재
-
-**구현 대상:**
-- 파일 경로: `components/search/search-dialog.tsx` (기존 파일 수정)
-- 파일 역할: 실시간 검색 및 결과 표시
-
-**주요 요구사항:**
-1. 실시간 검색 구현
-   - 사용자 입력 후 300ms 디바운싱 적용
-   - 검색어 변경 시 자동으로 API 호출
-   - 검색 중 로딩 상태 표시
-
-2. 검색 결과 표시 개선
-   - 데이터베이스에서 가져온 실제 게시물 정보 표시
-   - 카테고리 정보 포함하여 표시
-   - 검색어 하이라이팅 (단순한 방식)
-
-3. 사용자 경험 개선
-   - 검색 결과 클릭 시 해당 게시물로 이동
-   - 검색 히스토리 (로컬 스토리지 활용)
-   - 인기 검색어 또는 추천 검색어 표시
-
-**기술적 요구사항:**
-- 'use client' 컴포넌트로 구현
-- useState, useEffect, 커스텀 디바운싱 훅 활용
-- ShadCN Dialog 컴포넌트 유지
-
-**완료 기준:**
-- 실시간 검색이 자연스럽게 동작
-- 검색 결과가 실제 데이터베이스 데이터로 표시
-- 키보드 네비게이션 및 접근성 유지
-
-```
-
-### 3.3. 검색 결과 페이지 구현
-
-**프롬프트:**
-
-```
-전용 검색 결과 페이지를 구현해 주세요.
-
-**현재 상황:**
-- 검색 API 및 실시간 검색 컴포넌트 구현 완료
-- URL 기반 검색 결과 표시 페이지 필요
-
-**구현 대상:**
-- 파일 경로: `app/search/page.tsx`
-- 파일 역할: 검색 쿼리에 따른 게시물 결과 목록 표시
-
-**주요 요구사항:**
-1. URL 쿼리 파라미터 처리
-   - /search?q=검색어 형태로 접근
-   - 서버 사이드에서 초기 검색 결과 로드
-   - 검색어가 없는 경우 검색 폼만 표시
-
-2. 검색 결과 레이아웃
-   - 검색어 및 결과 개수 표시
-   - 기존 PostCard 컴포넌트 재사용하여 결과 표시
-   - 검색 결과가 없는 경우 적절한 안내 메시지
-
-3. 페이지 최적화
-   - 검색어에 따른 동적 메타데이터 설정
-   - 검색 결과 페이지네이션 (기본적인 수준)
-   - 관련 카테고리 또는 인기 게시물 추천
-
-**기술적 요구사항:**
-- Next.js App Router의 searchParams 활용
-- 서버 컴포넌트로 초기 데이터 로드
-- 기존 컴포넌트 최대한 재사용
-
-**완료 기준:**
-- URL을 통한 직접 검색 페이지 접근 가능
-- 검색 결과가 정확하게 표시
-- 빈 검색 결과에 대한 적절한 처리
-```
-
-### 확인: 검색 시스템
-
-브라우저에서 다음 2가지만 확인한다:
-
-1. **실시간 검색 확인**
-    - 헤더의 검색 아이콘 클릭 시 다이얼로그가 열리는가?
-    - 검색어 입력 시 실제 게시물이 결과로 나타나는가?
-2. **검색 결과 페이지 확인**
-    - 검색 결과 클릭 시 해당 게시물로 정상 이동하는가?
-    - URL을 직접 입력해도 검색 결과가 표시되는가?
-
-## 4. 소셜 공유 기능 구현
-
-### 4.1. 소셜 공유 컴포넌트 구현
-
-게시물을 다양한 소셜 미디어 플랫폼에 공유할 수 있는 기능을 추가한다.
-
-**프롬프트:**
-
-```
-게시물 소셜 공유 기능을 구현해 주세요.
-
-**현재 상황:**
-- 게시물 상세 페이지 구현 완료
-- 사용자들이 게시물을 소셜 미디어에 쉽게 공유할 수 있는 기능 필요
-
-**구현 대상:**
-- 파일 경로: `components/blog/social-share.tsx`
-- 파일 역할: 소셜 미디어 공유 버튼 컴포넌트
-
-**주요 요구사항:**
-1. 지원 플랫폼
-   - Twitter (X): 게시물 제목과 URL 공유
-   - Facebook: 게시물 URL 공유
-   - LinkedIn: 게시물 제목, 내용 요약, URL 공유
-   - 링크 복사: 클립보드에 게시물 URL 복사
-
-2. 공유 데이터 구성
-   - 게시물 제목, URL, 간단한 설명
-   - 커버 이미지 URL (있는 경우)
-   - 웹사이트 정보 (블로그명 등)
-
-3. 사용자 경험
-   - 각 플랫폼별 적절한 아이콘 사용 (Lucide React)
-   - 버튼 클릭 시 새 창으로 공유 페이지 열기
-   - 링크 복사 시 성공 알림 표시
-
-**기술적 요구사항:**
-- 'use client' 컴포넌트로 구현
-- 각 플랫폼의 공유 URL 규격에 맞춰 구현
-- URL 인코딩 처리
-- 복잡한 공유 SDK 사용 금지
-
-**완료 기준:**
-- 각 소셜 미디어 플랫폼으로 정상 공유
-- 링크 복사 기능 정상 동작
-- 모바일과 데스크톱에서 적절한 UI 표시
-
-```
-
-### 4.2. 게시물 상세 페이지에 공유 기능 통합
-
-**프롬프트:**
-
-```
-게시물 상세 페이지에 소셜 공유 기능을 통합해 주세요.
-
-**현재 상황:**
-- SocialShare 컴포넌트 구현 완료
-- 10장에서 구현한 게시물 상세 페이지 존재
-
-**구현 대상:**
-- 파일 경로: `app/posts/[slug]/page.tsx` (기존 파일 수정)
-- 파일 역할: 소셜 공유 기능이 통합된 게시물 상세 페이지
-
-**주요 요구사항:**
-1. 공유 버튼 배치
-   - 게시물 제목 하단 또는 내용 하단에 배치
-   - 좋아요 버튼과 함께 액션 영역 구성
-   - 모바일에서도 사용하기 쉬운 크기와 간격
-
-2. 공유 데이터 연동
-   - 현재 게시물의 실제 데이터를 SocialShare 컴포넌트에 전달
-   - 게시물 URL, 제목, 요약, 커버 이미지 등
-   - SEO 메타데이터와 일관성 유지
-
-3. 레이아웃 조화
-   - 기존 게시물 상세 페이지 디자인과 자연스럽게 통합
-   - 다른 액션 버튼들과 일관된 스타일
-   - 소셜 공유가 콘텐츠를 방해하지 않도록 배치
-
-**기술적 요구사항:**
-- 서버 컴포넌트에서 SocialShare 컴포넌트로 데이터 전달
-- 현재 페이지 URL 자동 생성
-- TypeScript Props 타입 정의
-
-**완료 기준:**
-- 모든 게시물 상세 페이지에서 공유 기능 사용 가능
-- 공유 시 정확한 게시물 정보 전달
-- 전체 페이지 레이아웃과 조화로운 디자인
-
-```
-
-### 확인: 소셜 공유
-
-브라우저에서 다음 2가지만 확인한다:
-
-1. **공유 기능 확인**
-    - 게시물 상세 페이지에서 각 소셜 미디어 버튼이 정상 동작하는가?
-    - 링크 복사 버튼 클릭 시 성공 메시지가 나타나는가?
-2. **공유 데이터 확인**
-    - 트위터 공유 시 게시물 제목과 URL이 정확한가?
-    - 복사된 링크로 접속했을 때 해당 게시물이 표시되는가?
-
-## 5. SEO 최적화 및 메타데이터 개선
-
-### 5.1. 동적 메타데이터 개선
-
-기존 게시물 페이지들의 SEO 최적화를 강화한다.
-
-**프롬프트:**
-
-```
-게시물 페이지들의 SEO 최적화를 위한 동적 메타데이터를 구현해 주세요.
-
-**현재 상황:**
-- 10장에서 기본적인 메타데이터 구현 완료
-- 소셜 공유 기능 추가로 Open Graph 메타데이터 중요성 증가
-
-**구현 대상:**
-- 파일 경로: `app/posts/[slug]/page.tsx` (기존 파일 수정)
-- 파일 경로: `lib/metadata.ts` (새로 생성)
-- 파일 역할: 게시물별 최적화된 메타데이터 생성
-
-**주요 요구사항:**
-1. 메타데이터 항목 확장
-   - 기본 title, description
-   - Open Graph (og:title, og:description, og:image, og:url)
-   - Twitter Cards (twitter:card, twitter:title, twitter:description)
-   - JSON-LD 구조화 데이터 (기본적인 수준)
-
-2. 동적 데이터 활용
-   - 게시물 제목을 페이지 제목으로 사용
-   - 게시물 요약을 description으로 사용
-   - 커버 이미지를 소셜 미디어 이미지로 사용
-   - 작성일, 수정일 등 추가 정보 포함
-
-3. 메타데이터 유틸리티 함수
-   - 재사용 가능한 메타데이터 생성 함수
-   - 기본값 설정 및 fallback 처리
-   - 소셜 미디어별 최적 길이 고려
-
-**기술적 요구사항:**
-- Next.js App Router의 generateMetadata 함수 활용
-- TypeScript 타입 정의 포함
-- 복잡한 SEO 도구 사용 금지
-
-**완료 기준:**
-- 각 게시물마다 고유한 메타데이터 생성
-- 소셜 미디어 공유 시 적절한 미리보기 표시
-- 검색 엔진 최적화 기본 요소 충족
-
-```
-
-### 5.2. 사이트맵 생성
-
-**프롬프트:**
-
-```
-검색 엔진을 위한 사이트맵을 생성해 주세요.
-
-**현재 상황:**
-- 모든 주요 페이지 구현 완료 (홈, 게시물, 카테고리, 검색)
-- 검색 엔진이 사이트 구조를 이해할 수 있도록 사이트맵 필요
-
-**구현 대상:**
-- 파일 경로: `app/sitemap.ts`
-- 파일 역할: 동적 사이트맵 생성
-
-**주요 요구사항:**
-1. 포함할 페이지들
-   - 홈페이지 (/)
-   - 모든 게시물 페이지 (/posts/[slug])
-   - 게시물 목록 페이지 (/posts)
-   - 모든 카테고리 페이지 (/categories/[slug])
-   - 카테고리 목록 페이지 (/categories)
-
-2. 메타데이터 정보
-   - lastModified: 각 페이지의 마지막 수정일
-   - changeFrequency: 페이지 유형별 변경 빈도
-   - priority: 페이지 중요도 (홈 > 게시물 > 카테고리)
-
-3. 동적 데이터 연동
-   - 데이터베이스에서 실제 게시물 목록 조회
-   - 카테고리 목록 조회
-   - 게시물 수정일 정보 활용
-
-**기술적 요구사항:**
-- Next.js App Router의 sitemap.ts 파일 규격 준수
-- Supabase에서 필요한 데이터만 효율적으로 조회
-- 정적 페이지와 동적 페이지 구분하여 처리
-
-**완료 기준:**
-- /sitemap.xml 접근 시 올바른 XML 형식 출력
-- 모든 공개 페이지 포함
-- 검색 엔진에서 사이트맵 인식 가능
-
-```
-
-### 확인: SEO 최적화
-
-브라우저에서 다음 2가지만 확인한다:
-
-1. **메타데이터 확인**
-    - 게시물 페이지에서 F12 → Elements → head 태그 내 메타데이터가 정확한가?
-    - 소셜 미디어 공유 시 게시물 이미지와 설명이 올바르게 표시되는가?
-2. **사이트맵 확인**
-    - 브라우저에서 /sitemap.xml 접근 시 XML이 정상 출력되는가?
-    - 사이트맵에 모든 게시물과 카테고리가 포함되어 있는가?
-
-## 6. Vercel 배포 준비 및 실행
-
-### 6.1. 배포 전 환경 설정 정리
-
-### **필수 환경 변수 목록**
-
-### Clerk 인증 시스템
-
-```
-NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=pk_test_your-publishable-key
-CLERK_SECRET_KEY=sk_test_your-secret-key
-NEXT_PUBLIC_CLERK_SIGN_IN_URL=/sign-in
-NEXT_PUBLIC_CLERK_SIGN_UP_URL=/sign-up
-NEXT_PUBLIC_CLERK_AFTER_SIGN_IN_URL=/
-NEXT_PUBLIC_CLERK_AFTER_SIGN_UP_URL=/
-```
-
-### Supabase 데이터베이스
-
-```
-NEXT_PUBLIC_SUPABASE_URL=https://your-project-url.supabase.co
+NEXT_PUBLIC_SUPABASE_URL=your-project-url
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
 SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
 ```
 
-### 환경 변수 설정 원칙
+### **2. 5. Clerk에서 Supabase 통합 설정**
 
-### 클라이언트 vs 서버 환경 변수
+Clerk의 인증 정보를 Supabase RLS(Row Level Security)에서 사용하려면 JWT 토큰을 통해 두 시스템을 연결해야 한다. 이 설정이 없으면 Supabase는 Clerk의 사용자 정보를 인식하지 못해 RLS 정책이 작동하지 않는다.
 
-- `NEXT_PUBLIC_` 접두사: 브라우저에서 접근 가능 (공개 정보만)
-- 접두사 없음: 서버에서만 접근 가능 (민감한 정보)
+### 1. Clerk Dashboard 접속
 
-### Production 환경 준비사항
+- [https://dashboard.clerk.com](https://dashboard.clerk.com/)에 로그인한다.
+- 블로그 프로젝트(예: `my-blog`)를 선택한다.
 
-### 1. Clerk Production 인스턴스 설정
+### 2. Integrations 메뉴 이동
 
-- Clerk Dashboard에서 Production 인스턴스 생성
-- Production용 도메인 URL 확인
-- OAuth 제공자 자체 자격 증명 설정 필요
+- 좌측 사이드바에서 **Integrations**를 클릭한다.
+- **Supabase** 통합을 검색하고 활성화한다.
+- **Manage Integration**으로 이동한다.
 
-### 2. Supabase Production 프로젝트
+### 3. Development와 Production 인스턴스 설정
 
-- 별도 Production 프로젝트 생성 권장
-- RLS 정책 재검토 및 적용
-- Third-Party Auth 설정에 Production Clerk 도메인 등록
+- **Select instance**에서 **Development**와 **Production** 인스턴스를 각각 설정한다:
+    - **Development 환경** (테스트용):
+        - Development 인스턴스를 선택한다.
+        - 통합 활성화 후 Clerk 도메인을 복사한다 (예: `https://grand-lion-58.clerk.accounts.dev`).
+    - **Production 환경** (실제 배포용):
+        - Production 인스턴스를 선택한다.
+        - 통합 활성화 후 Clerk 도메인을 복사한다 (예: `https://<your-prod-app-id>.clerk.accounts.dev`).
 
-### 배포 전 체크리스트
+---
 
-### 로컬 환경 확인
+### Supabase에서 JWT 설정
 
-- [ ]  `.env.local` 파일에 모든 필수 환경 변수 설정
-- [ ]  환경 변수 값들이 올바른지 확인
-- [ ]  `.env.local.example` 파일 생성하여 구조 문서화
+### 1. Supabase Dashboard 접속
 
-### 코드 검증
+- https://supabase.com/dashboard에 로그인한다.
 
-- [ ]  TypeScript 컴파일 에러 없음
-- [ ]  ESLint 경고 해결
-- [ ]  모든 import 경로 정확성 확인
-- [ ]  존재하지 않는 컴포넌트 참조 제거
+### 2. Authentication 섹션에서 Clerk 설정
 
-### 데이터베이스 및 외부 서비스
+- 각 프로젝트에서 설정한다:
+    - **Development 프로젝트** (예: `my-blog-database`):
+        1. 좌측 사이드바에서 **Authentication** 메뉴로 이동한다.
+        2. **Sign In / Providers** 탭으로 이동한다.
+        3. **Third-Party Auth** 섹션에서 **Add a provider**를 클릭하고 **Clerk**를 선택한다.
+        4. **Clerk Domain** 입력란에 Development용 Clerk 도메인(예: `https://grand-lion-58.clerk.accounts.dev`)을 입력한다.
+        5. **Save** 버튼을 클릭한다.
+    - **Production 프로젝트**:
+        1. 동일한 절차를 반복하되, Production용 Clerk 도메인(예: `https://<your-prod-app-id>.clerk.accounts.dev`)을 입력한다.
+        2. **Save** 버튼을 클릭한다.
 
-- [ ]  Supabase 테이블 및 RLS 정책 적용 완료
-- [ ]  Supabase Storage 정책 설정 완료
-- [ ]  Clerk 인증 플로우 정상 동작 확인
+### 2.6. 환경변수 설정 및 Third-Party Auth 검증
 
-### Vercel 환경 변수 설정 방법
-
-### 1. 프로젝트 생성 시 설정
-
-- GitHub 저장소 연결 후 Configure Project 단계에서 설정
-- Environment Variables 섹션에서 추가
-
-### 2. 배포 후 설정
-
-- Vercel Dashboard → Project Settings → Environment Variables
-- Add New를 통해 환경 변수 추가
-- 환경별 설정 가능 (Production, Preview, Development)
-
-### 3. 환경 변수 업데이트 후 재배포
-
-- 환경 변수 변경 시 자동 재배포되지 않음
-- Deployments 탭에서 수동 Redeploy 필요
-
-## 보안 고려사항
-
-### 민감한 정보 처리
-
-- `SUPABASE_SERVICE_ROLE_KEY`는 절대 클라이언트에 노출 금지
-- API 키는 프로덕션용 별도 발급 권장
-- `.env.local` 파일은 절대 Git에 커밋하지 않음
-
-### 환경별 분리
-
-- Development, Staging, Production 환경별 별도 키 사용
-- 각 환경에 맞는 데이터베이스 및 서비스 연결
-
-### 자주 발생하는 설정 오류
-
-### 1. 환경 변수 접근 실패
-
-**증상**: `process.env.VARIABLE_NAME`이 undefined
-**해결**: NEXT_PUBLIC_ 접두사 확인 또는 서버 컴포넌트에서 사용
-
-### 2. Supabase 연결 실패
-
-**증상**: Database connection 오류
-**해결**: URL과 키 값 정확성 확인, RLS 정책 검토
-
-### 3. Clerk 인증 실패
-
-**증상**: 로그인 페이지 무한 리다이렉트
-**해결**: Clerk Dashboard의 도메인 설정 확인
-
-### Production 환경에서의 추가 과정
-
-1. **Clerk 인스턴스 전환**:
-    - Development에서는 "Development" 인스턴스를 사용했으나, Production으로 이동할 때는 "Production" 인스턴스를 선택해야 합니다. Clerk 대시보드에서 **Integrations > Supabase**로 이동하여 Production 인스턴스를 선택하고 통합을 활성화해야 합니다.
-    - 이때 제공되는 **Clerk 도메인**이 Development와 다를 수 있으므로, 새로운 Production 도메인(`https://[your-production-domain].clerk.accounts.dev`)을 확인하고 복사합니다.
-2. **Supabase에서 Third-Party Auth 설정 갱신**:
-    - Supabase 대시보드에서 **Authentication > Sign In / Up > Third Party Auth**로 이동합니다.
-    - 기존 Clerk 통합을 편집하거나 새로 추가하며, Production용 Clerk 도메인(`https://[your-production-domain].clerk.accounts.dev`)을 입력합니다.
-    - JWKS URL은 도메인에 `/.well-known/jwks.json`을 추가하여 생성합니다(예: `https://[your-production-domain].clerk.accounts.dev/.well-known/jwks.json`). 이 URL을 Supabase의 **JWT Settings**에 업데이트합니다.
-3. **환경 변수 업데이트**:
-    - 클라이언트 코드(예: Next.js)에서 사용되는 환경 변수(`NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_KEY`)를 Production용 Supabase 프로젝트 값으로 변경합니다.
-    - Clerk의 Frontend API 키도 Production 인스턴스에 맞게 갱신해야 합니다.
-4. **RLS 정책 검토**:
-    - Production 환경에서는 데이터 접근 제어가 더 엄격할 수 있으므로, Supabase의 RLS 정책을 다시 검토하고 필요에 따라 조정합니다. 예를 들어, `requesting_user_id()` 함수가 Production 환경에서 올바르게 Clerk의 `sub` 클레임을 파싱하는지 확인하세요.
-5. **보안 강화**:
-    - Production에서는 민감한 데이터(예: Supabase `service_role` 키)를 클라이언트 코드에 절대 노출하지 않도록 서버 측에서만 사용하세요.
-    - OAuth 제공자(Google, GitHub 등) 설정을 Production용 자격 증명으로 갱신해야 합니다. Development에서는 Clerk가 테스트용 자격 증명을 제공하지만, Production에서는 자체 자격 증명이 필요합니다.
-6. **테스트 및 배포**:
-    - Production 환경에서 통합이 정상 작동하는지 테스트 쿼리를 실행하여 확인합니다(예: 인증된 사용자만 접근 가능한 데이터 조회).
-    - 배포 후 도메인 변경(예: `app.yourcompany.com`)이 필요할 경우, Clerk 대시보드에서 도메인을 추가하고 Supabase에 반영해야 합니다.
-
-### 6.2. 로컬 프로덕션 빌드 테스트
-
-배포 전에 로컬 환경에서 프로덕션 빌드를 테스트한다.
-
-### 1. 개발 서버 종료
-
-현재 실행 중인 개발 서버를 종료한다.
-
-```bash
-# Ctrl+C로 개발 서버 종료
-
-```
-
-### 2. 프로덕션 빌드 실행
-
-```bash
-# 프로덕션 빌드 생성
-npm run build
-```
-
-### 3. 빌드 결과 확인
-
-빌드 과정에서 다음 정보를 확인한다:
-
-- 빌드 완료 시간
-- 번들 크기 정보
-- 정적/동적 페이지 구분
-- 에러 또는 경고 메시지
-
-### 4. 프로덕션 모드 실행
-
-```bash
-# 프로덕션 서버 시작
-npm run start
-```
-
-### 5. 브라우저에서 확인
-
-`http://localhost:3000`에서 애플리케이션 동작 확인
-
-## 주요 확인 항목
-
-### 페이지 로딩 및 라우팅
-
-- [ ]  홈페이지 정상 로드
-- [ ]  게시물 목록 페이지 (/posts)
-- [ ]  게시물 상세 페이지 (/posts/[slug])
-- [ ]  카테고리 페이지 (/categories)
-- [ ]  검색 페이지 (/search)
-- [ ]  로그인/회원가입 페이지
-
-### 인증 시스템
-
-- [ ]  로그인 기능 정상 동작
-- [ ]  회원가입 기능 정상 동작
-- [ ]  로그아웃 기능 정상 동작
-- [ ]  인증 상태에 따른 UI 변화
-
-### 데이터베이스 연동
-
-- [ ]  게시물 목록 정상 표시
-- [ ]  게시물 상세 내용 표시
-- [ ]  댓글 작성 및 표시
-- [ ]  좋아요 기능 동작
-
-### 이미지 및 미디어
-
-- [ ]  커버 이미지 정상 표시
-- [ ]  이미지 업로드 기능 동작
-- [ ]  Supabase Storage 연동 확인
-
-### 검색 및 필터링
-
-- [ ]  실시간 검색 기능
-- [ ]  검색 결과 페이지
-- [ ]  카테고리별 필터링
-
-### 자주 발생하는 빌드 문제
-
-### 1. TypeScript 타입 에러
-
-**증상**: 빌드 중 타입 관련 에러 발생
-
-```bash
-Type error: Property 'xxx' does not exist on type 'yyy'
-```
-
-**해결방법**:
-
-- 타입 정의 파일 확인
-- import 경로 정확성 검토
-- 사용하지 않는 import 제거
-
-### 2. 환경 변수 누락
-
-**증상**: 빌드는 성공하지만 런타임에서 undefined 에러
-**해결방법**:
-
-- `.env.local` 파일 존재 확인
-- 환경 변수명 오타 확인
-- NEXT_PUBLIC_ 접두사 확인
-
-### 3. 이미지 최적화 오류
-
-**증상**: Image 컴포넌트 관련 에러
-
-```bash
-Error: Invalid src prop on `next/image`
-```
-
-**해결방법**:
-
-- next.config.js에 이미지 도메인 추가
-- 이미지 경로 정확성 확인
-
-### 4. 서버 컴포넌트/클라이언트 컴포넌트 혼용 에러
-
-**증상**: 'use client' 관련 에러
-**해결방법**:
-
-- useState, useEffect 사용 컴포넌트에 'use client' 추가
-- 서버 전용 함수를 클라이언트에서 사용하지 않도록 수정
-
-### 성능 최적화 확인
-
-### 번들 분석
-
-빌드 완료 후 출력되는 번들 크기 정보를 확인한다:
-
-- First Load JS: 초기 로딩 시 다운로드되는 JS 크기
-- Route별 크기: 각 페이지별 추가 JS 크기
-
-### 권장 크기 기준
-
-- First Load JS: 100KB 이하
-- 개별 페이지: 50KB 이하
-
-### 크기 초과 시 대응방안
-
-- 사용하지 않는 라이브러리 제거
-- 동적 import 활용
-- 이미지 최적화
-
-### 배포 준비 완료 확인
-
-### 필수 체크리스트
-
-- [ ]  `npm run build` 성공
-- [ ]  `npm run start` 정상 실행
-- [ ]  모든 핵심 기능 동작 확인
-- [ ]  콘솔 에러 없음
-- [ ]  네트워크 요청 정상 처리
-
-### 추가 확인사항
-
-- [ ]  모바일 반응형 확인
-- [ ]  브라우저별 호환성 확인
-- [ ]  외부 서비스 연동 정상 동작
-
-### 문제 해결 명령어
-
-### 캐시 및 의존성 문제 해결
-
-```bash
-# node_modules 및 .next 폴더 삭제
-rmdir /s /q node_modules
-rmdir /s /q .next
-
-# 패키지 재설치
-npm install
-
-# 다시 빌드
-npm run build
-```
-
-### 자세한 빌드 로그 확인
-
-```bash
-# 디버그 모드로 빌드
-npm run build --verbose
-```
-
-프로덕션 빌드 테스트가 성공적으로 완료되면 Vercel 배포를 진행할 준비가 완료된다.
-
-### 6.3. Vercel 배포 실행
-
-### 1. Vercel 계정 설정
-
-### 가입 및 로그인
-
-1. https://vercel.com 접속
-2. GitHub 계정으로 로그인 (권장)
-3. 팀 생성 또는 개인 계정으로 시작
-
-### GitHub 저장소 연결 권한 설정
-
-- Vercel이 GitHub 저장소에 접근할 수 있도록 권한 부여
-- 전체 저장소 또는 선택된 저장소만 접근 허용 선택 가능
-
-### 2. 새 프로젝트 생성
-
-### 저장소 선택
-
-1. Vercel 대시보드에서 "Add New..." → "Project" 선택
-2. GitHub 저장소 목록에서 블로그 프로젝트 선택
-3. "Import" 클릭
-
-### 프로젝트 설정 구성
-
-**Configure Project** 화면에서 다음 설정 확인:
-
-### 기본 설정
-
-- **Project Name**: 자동 생성된 이름 또는 원하는 이름으로 변경
-- **Framework Preset**: Next.js 자동 감지 확인
-- **Root Directory**: `./` (기본값 유지)
-
-### 빌드 설정
-
-- **Build Command**: `npm run build` (기본값)
-- **Output Directory**: `.next` (자동 설정)
-- **Install Command**: `npm install` (자동 설정)
-
-### 3. 환경 변수 설정
-
-### Environment Variables 섹션에서 추가
-
-다음 환경 변수들을 순서대로 추가:
-
-### Clerk 인증 설정
-
-```
-Name: NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
-Value: [Clerk Dashboard에서 복사한 Publishable Key]
-Environment: Production, Preview, Development (모두 선택)
-
-Name: CLERK_SECRET_KEY
-Value: [Clerk Dashboard에서 복사한 Secret Key]
-Environment: Production, Preview, Development (모두 선택)
-```
-
-### Supabase 데이터베이스 설정
-
-```
-Name: NEXT_PUBLIC_SUPABASE_URL
-Value: [Supabase Project URL]
-Environment: Production, Preview, Development (모두 선택)
-
-Name: NEXT_PUBLIC_SUPABASE_ANON_KEY
-Value: [Supabase Anon Key]
-Environment: Production, Preview, Development (모두 선택)
-
-Name: SUPABASE_SERVICE_ROLE_KEY
-Value: [Supabase Service Role Key]
-Environment: Production (Production만 선택)
-```
-
-### 추가 환경 변수
-
-```
-Name: NEXT_PUBLIC_CLERK_SIGN_IN_URL
-Value: /sign-in
-
-Name: NEXT_PUBLIC_CLERK_SIGN_UP_URL
-Value: /sign-up
-
-Name: NEXT_PUBLIC_CLERK_AFTER_SIGN_IN_URL
-Value: /
-
-Name: NEXT_PUBLIC_CLERK_AFTER_SIGN_UP_URL
-Value: /
-```
-
-### 4. 첫 배포 실행
-
-### 배포 시작
-
-1. 모든 설정 완료 후 "Deploy" 버튼 클릭
-2. 빌드 과정 실시간 모니터링
-3. 빌드 로그에서 에러 확인
-
-### 빌드 과정 모니터링
-
-다음 단계들이 순차적으로 진행됨:
-
-- **Queued**: 빌드 대기열에서 대기
-- **Building**: 실제 빌드 과정 진행
-    - Installing dependencies
-    - Running build command
-    - Collecting build outputs
-- **Deploying**: 빌드된 결과물 배포
-- **Ready**: 배포 완료
-
-### 5. 배포 완료 및 URL 확인
-
-### 성공적인 배포
-
-- 초록색 "Success" 상태 표시
-- 자동 생성된 URL 확인 (예: your-project-name.vercel.app)
-- "Visit" 버튼을 통해 배포된 사이트 접속
-
-### 도메인 설정 (선택사항)
-
-1. Project Settings → Domains
-2. 커스텀 도메인 추가 가능
-3. DNS 설정 안내에 따라 도메인 연결
-
-### 6. 자동 배포 설정 확인
-
-### Git 기반 자동 배포
-
-- main 브랜치에 코드 푸시 시 자동 배포
-- Pull Request 생성 시 Preview 배포 자동 생성
-- 커밋별 배포 히스토리 확인 가능
-
-### 배포 설정 조정
-
-- Project Settings → Git
-- 자동 배포 브랜치 변경 가능
-- Preview 배포 설정 조정 가능
-
-### 배포 실패 시 문제 해결
-
-### 빌드 에러 확인
-
-1. Deployments 탭에서 실패한 배포 클릭
-2. Build Logs에서 상세 에러 메시지 확인
-3. 에러 유형별 대응:
-
-### TypeScript 에러
-
-```
-Type error: Cannot find module 'xxx'
-```
-
-**해결**: import 경로 수정, 타입 정의 추가
-
-### 환경 변수 에러
-
-```
-ReferenceError: process is not defined
-```
-
-**해결**: 환경 변수 설정 확인, NEXT_PUBLIC_ 접두사 확인
-
-### 의존성 에러
-
-```
-Module not found: Can't resolve 'xxx'
-```
-
-**해결**: package.json 의존성 확인, npm install 재실행
-
-### 재배포 방법
-
-1. 문제 해결 후 GitHub에 수정 사항 푸시
-2. 또는 Vercel에서 "Redeploy" 버튼 클릭
-3. 빌드 로그 재확인
-
-### 성공적인 배포 확인 지표
-
-### 빌드 성공
-
-- Build time: 일반적으로 1-3분 내 완료
-- Bundle size: 합리적인 크기 (First Load JS < 100KB)
-- 에러 또는 경고 없음
-
-### 기능 정상 동작
-
-- 모든 페이지 접근 가능
-- 인증 시스템 정상 동작
-- 데이터베이스 연동 확인
-- 이미지 로딩 정상
-
-### 성능 지표
-
-- Core Web Vitals 점수 확인
-- 페이지 로딩 속도 3초 이내
-- 모바일 반응형 정상 동작
-
-배포가 성공적으로 완료되면 실제 사용자들이 접근할 수 있는 블로그가 완성된다.
-
-### 6.4. 배포 후 검증 및 문제 해결
-
-### 기본 기능 검증 체크리스트
-
-### 페이지 접근성 확인
-
-- [ ]  홈페이지 (/) 정상 로드
-- [ ]  게시물 목록 (/posts) 정상 표시
-- [ ]  게시물 상세 페이지 (/posts/[slug]) 접근 가능
-- [ ]  카테고리 페이지 (/categories) 정상 동작
-- [ ]  검색 페이지 (/search) 기능 확인
-- [ ]  404 페이지 적절한 표시
-
-### 인증 시스템 검증
-
-- [ ]  로그인 페이지 (/sign-in) 정상 표시
-- [ ]  회원가입 페이지 (/sign-up) 정상 표시
-- [ ]  소셜 로그인 (Google, GitHub) 동작 확인
-- [ ]  로그아웃 기능 정상 동작
-- [ ]  인증 상태에 따른 UI 변화 확인
-
-### 데이터베이스 연동 확인
-
-- [ ]  게시물 목록이 실제 데이터로 표시
-- [ ]  게시물 상세 내용 정상 로드
-- [ ]  댓글 작성 및 표시 기능
-- [ ]  좋아요 기능 동작 확인
-- [ ]  검색 결과가 실제 데이터 기반으로 표시
-
-### 이미지 및 미디어 확인
-
-- [ ]  커버 이미지 정상 표시
-- [ ]  이미지 업로드 기능 동작 (관리자)
-- [ ]  Supabase Storage 이미지 로딩
-- [ ]  Next.js Image 최적화 적용 확인
-
-### 성능 및 사용자 경험 검증
-
-### 로딩 성능
-
-- 페이지 초기 로딩: 3초 이내
-- 페이지 간 네비게이션: 1초 이내
-- 이미지 로딩: 지연 로딩 적용 확인
-
-### 반응형 디자인
-
-- [ ]  모바일 (320px-767px) 레이아웃 확인
-- [ ]  태블릿 (768px-1023px) 레이아웃 확인
-- [ ]  데스크톱 (1024px+) 레이아웃 확인
-- [ ]  터치 인터페이스 정상 동작
-
-### SEO 및 메타데이터
-
-- [ ]  페이지별 적절한 title 태그
-- [ ]  메타 description 설정 확인
-- [ ]  Open Graph 메타데이터 확인
-- [ ]  사이트맵 (/sitemap.xml) 접근 가능
-
-### 자주 발생하는 문제 및 해결방법
-
-### 1. 환경 변수 관련 문제
-
-### 증상: API 키가 undefined로 표시
+**프롬프트:**
 
 ```jsx
-console.log(process.env.NEXT_PUBLIC_SUPABASE_URL); // undefined
+Next.js 환경변수 확인 및 Clerk Third-Party Auth 통합 테스트 페이지를 생성해 주세요.
 
+**현재 상황:**
+- **2025년 새로운 Clerk Third-Party Auth 방식 사용**
+- **JWT Template 방식 deprecated (2025.04.01부터)**
+- Supabase Third-Party Auth에 Clerk 등록 완료
+
+**구현 대상:**
+- 파일 경로: `app/test-supabase/page.tsx`
+- 파일 역할: 새로운 Third-Party Auth 통합 테스트
+
+**주요 요구사항:**
+1. 환경변수 상태 표시
+
+2. **새로운 Third-Party Auth 테스트**
+   - Clerk 세션 토큰 확인
+   - **auth.jwt()->>'sub' 함수 테스트**
+   - 세션의 role 클레임 확인 ('authenticated' 값)
+
+3. **Supabase 클라이언트 연결 테스트**
+   - 새로운 accessToken 방식 사용
+   - RLS 정책 동작 확인
+
+**기술적 요구사항:**
+- **@clerk/nextjs의 useSession 훅 사용**
+- **새로운 클라이언트 설정 방식 적용**
+- 구 방식(getToken) 대신 세션 기반 접근
+
+**완료 기준:**
+- Third-Party Auth 통합 상태 확인 가능
+- 새로운 방식의 JWT 클레임 검증
+- RLS 정책 정상 작동 확인
 ```
 
-**해결방법**:
+## 3. 데이터베이스 테이블 설계 및 생성
 
-1. Vercel Dashboard → Project Settings → Environment Variables 확인
-2. 환경 변수명 오타 확인
-3. 환경 변수 추가 후 재배포 실행
+### 3.1. 블로그 데이터베이스 스키마 설계
 
-```bash
-# Vercel CLI를 통한 환경 변수 확인 (선택적)
-vercel env ls
+블로그에 필요한 주요 테이블을 설계해보자.
 
-```
+AI에게 간단한 데이터베이스 스키마 설계를 요청한다:
 
-### 2. Supabase 연결 실패
-
-### 증상: Database connection 에러 또는 빈 데이터
+**프롬프트:**
 
 ```
-Error: Invalid API key or unauthorized access
+간단한 블로그 데이터베이스 스키마와 Storage 버킷을 설계해 주세요.
 
+**현재 상황:**
+- Supabase PostgreSQL 사용
+- **2025년 새로운 Clerk Third-Party Auth 방식 사용**
+- **auth.jwt()->>'sub' 함수 활용 가능**
+- 이미지 업로드 기능 필요
+- 개발 단계이므로 최대한 단순하게 구현
+
+**구현 대상:**
+- 파일 경로: `docs/database-schema.sql`
+- 파일 역할: 블로그 테이블 및 Storage 버킷 생성 SQL
+
+**주요 요구사항:**
+1. 기존 테이블 및 버킷 삭제
+   - DROP TABLE IF EXISTS (의존성 순서 고려)
+   - Storage 버킷도 재생성
+
+2. 필요한 테이블 (4개)
+   - categories: 카테고리 관리
+   - posts: 블로그 게시물 (author_id는 TEXT 타입, Clerk 사용자 ID)
+   - comments: 댓글 (user_id는 TEXT 타입, Clerk 사용자 ID)
+   - likes: 좋아요 (user_id는 TEXT 타입, Clerk 사용자 ID)
+
+3. **새로운 방식 적용**
+   - **user_id 컬럼 기본값: auth.jwt()->>'sub'**
+   - **UUID 대신 TEXT 타입 사용 (Clerk 사용자 ID)**
+   - **RLS 정책 호환성 고려**
+
+4. Storage 버킷 생성
+   - 버킷명: blog-images
+   - 공개 설정: true (누구나 이미지 볼 수 있음)
+   - SQL: INSERT INTO storage.buckets (id, name, public) VALUES ('blog-images', 'blog-images', true)
+
+5. 초기 데이터
+   - 카테고리 4개 (일반, 기술, 일상, 개발)
+   - ON CONFLICT 처리로 재실행 안전성 확보
+
+**기술적 요구사항:**
+- pgcrypto 확장 활성화
+- **auth.jwt() 함수는 Supabase 내장 함수이므로 별도 생성 불필요**
+- 한글 주석으로 각 섹션 설명
+- Storage 버킷 생성 포함
+- 여러 번 실행해도 오류 없음
+
+**완료 기준:**
+- 테이블 4개 + Storage 버킷 1개 생성
+- **Clerk 사용자 ID 호환 데이터 타입 사용**
+- 초기 카테고리 데이터 포함
+- Supabase에서 바로 실행 가능
+
+요청사항만 실행한다.
 ```
 
-**해결방법**:
+### 3.2. Supabase에서 테이블 생성
 
-1. Supabase URL과 키 값 정확성 재확인
-2. RLS 정책 활성화 상태 확인
-3. Third-Party Auth 설정에서 Clerk 도메인 확인
-4. Supabase Dashboard에서 연결 테스트:
-    - SQL Editor에서 `SELECT * FROM posts LIMIT 1;` 실행
-    - Authentication → Users에서 사용자 존재 확인
+AI가 제공한 SQL을 사용하여 Supabase에서 테이블을 생성한다.
 
-### 3. Clerk 인증 실패
+1. Supabase 대시보드 → SQL Editor 이동
+2. AI가 제공한 CREATE TABLE 문 복사(database-schema.sql)후 붙여넣기
+3. 쿼리 실행
 
-### 증상: 로그인 페이지 무한 리다이렉트 또는 401 에러
+테이블 생성 후 Table Editor에서 다음을 확인한다:
 
-```
-Clerk: Invalid publishable key
+- 테이블이 올바르게 생성되었는지
+- **사용자 ID 컬럼이 TEXT 타입으로 설정되었는지**
+- 기본값이 설정되었는지 (created_at, user_id 등)
 
-```
+### 3.3. Supabase TypeScript 타입 생성
 
-**해결방법**:
+AI에게 TypeScript 타입 생성을 요청한다:
 
-1. Clerk Dashboard에서 도메인 설정 확인
-    - Allowed domains에 Vercel 도메인 추가
-    - Production 환경에서는 커스텀 도메인도 추가 필요
-2. 환경 변수에서 Clerk 키 값 재확인
-3. Clerk와 Supabase Third-Party Auth 연동 재확인
-
-### 4. 이미지 로딩 문제
-
-### 증상: 이미지가 표시되지 않거나 최적화되지 않음
+**프롬프트:**
 
 ```
-Error: Invalid src prop on next/image
+Supabase 데이터베이스의 TypeScript 타입을 정의해 주세요.
+
+**현재 상황:**
+- 데이터베이스 테이블 생성 완료 (posts, comments, likes, categories)
+- **2025년 새로운 Clerk Third-Party Auth 방식 사용**
+- **Clerk 사용자 ID는 문자열 형태 (UUID 아님)**
+- **auth.jwt()->>'sub' 활용 가능**
+- TypeScript 타입 안전성 확보 필요
+
+**구현 대상:**
+- 파일 경로: `types/database.types.ts`
+- 파일 역할: Supabase 스키마 기반 TypeScript 타입 정의
+
+**주요 요구사항:**
+1. 테이블별 타입 인터페이스
+   - Posts, Comments, Likes, Categories 인터페이스
+   - 각 컬럼의 정확한 타입 지정
+   - **author_id, user_id는 string 타입** (Clerk 사용자 ID)
+   - null 허용 컬럼 처리
+
+2. Database 통합 타입
+   - Supabase 클라이언트에서 사용할 Database 타입
+   - 테이블별 Row, Insert, Update 타입 분리
+   - 관계형 데이터 조회를 위한 확장 타입
+
+3. 유틸리티 타입
+   - 자주 사용될 조합 타입
+   - 블로그 특화 타입 (PostWithCategory 등)
+   - **Clerk 사용자 정보 타입** (ClerkUser 인터페이스)
+
+**Clerk 통합 타입 요구사항:**
+- **사용자 ID 타입**: string (Clerk 고유 ID 형식)
+- **Clerk 사용자 타입**: 기본 사용자 정보 인터페이스 포함
+- **JWT 클레임 타입**: 새로운 Third-Party Auth 토큰 구조 반영
+
+**Third-Party Auth 고려사항:**
+- **role 클레임**: 'authenticated' | 'anon'
+- **sub 클레임**: Clerk 사용자 ID (string)
+- **세션 기반 타입**: useSession 훅 호환성
+
+**기술적 요구사항:**
+- 생성된 데이터베이스 스키마와 완전 일치
+- Supabase JavaScript 클라이언트와 호환
+- **새로운 Third-Party Auth 방식과 호환성 확보**
+- JSDoc 주석으로 각 타입 설명
+
+**완료 기준:**
+- 모든 테이블의 타입이 정확히 정의됨
+- **Clerk 사용자 ID 타입이 올바르게 string으로 정의됨**
+- **Third-Party Auth 세션 타입 포함**
+- lib/supabase.ts에서 바로 활용 가능
+- TypeScript 컴파일 오류 없음
+
+요청사항만 실행한다.
 ```
 
-**해결방법**:
+### 3.4. Supabase 클라이언트 설정 (최신 Third-Party Auth 방식)
 
-1. `next.config.js`에 이미지 도메인 추가:
+AI에게 2025년 새로운 방식의 Supabase 클라이언트 구현을 요청한다:
+
+**3.4.1. 클라이언트 Supabase 설정**
+
+AI에게 클라이언트 전용 Supabase 클라이언트 구현을 요청한다:
+
+**프롬프트:**
+
+```
+2025년 새로운 Clerk Third-Party Auth 방식을 사용한 클라이언트 전용 Supabase 클라이언트를 구현해 주세요.
+
+**중요 변경사항:**
+- **JWT Template 방식 완전 deprecated (2025.04.01부터)**
+- **Third-Party Auth 방식으로 전면 변경**
+- **JWT Secret 공유 불필요** (보안 대폭 개선)
+- **새로운 accessToken 설정 방식 필수**
+- **세션 기반 자동 토큰 관리**
+
+**현재 상황:**
+- 2.5에서 Third-Party Auth 설정 완료
+- Clerk 세션에 'role': 'authenticated' 클레임 추가 완료
+- 데이터베이스 테이블 및 타입 정의 완료
+- **auth.jwt()->>'sub' 직접 사용 가능**
+
+**구현 대상:**
+- 파일 경로: `lib/supabase.ts`
+- 파일 역할: **클라이언트 컴포넌트 전용** Supabase 클라이언트 인스턴스
+- **중요**: 서버 관련 코드는 절대 포함하지 않음
+
+**주요 요구사항:**
+1. **클라이언트 전용 설정**
+   - **'use client' 지시어 필수**
+   - **useSession 훅 기반 자동 토큰 관리만 구현**
+   - **서버 관련 import 절대 금지**
+
+2. **새로운 클라이언트 설정 방식**
+   ```typescript
+   // ✅ 2025년 권장 방식 (클라이언트 전용)
+   const supabase = useMemo(() => {
+     return createClient<Database>(
+       config.url,
+       config.anonKey,
+       {
+         global: {
+           headers: async () => {
+             if (session) {
+               const token = await session.getToken();
+               return token ? { Authorization: `Bearer ${token}` } : {};
+             }
+             return {};
+           },
+         },
+         auth: {
+           persistSession: false,
+           autoRefreshToken: false,
+         },
+       }
+     );
+   }, [session]);
+   ```
+
+3. **클라이언트 전용 함수들**
+   - **useSupabaseClient()**: 세션 기반 자동 인증 클라이언트 반환
+   - **useCurrentUserId()**: 현재 Clerk 사용자 ID 반환
+   - **extractJWTClaims()**: JWT 토큰 클레임 추출 (디버깅용)
+
+4. **타입 안전성**
+   - 환경 변수 타입 체크
+   - **Database 타입 완전 연동**
+   - **SupabaseClientType 타입 export**
+
+**기술적 요구사항:**
+- **@clerk/nextjs의 useSession 훅만 사용**
+- **@clerk/nextjs/server import 절대 금지**
+- **auth() 함수 사용 금지** (서버 전용이므로)
+- **Database 타입 완전 연동**
+- 환경 변수 존재 여부 확인
+- **새 방식과 구 방식 차이점 주석으로 명확히 설명**
+
+**사용 예시 포함:**
+```typescript
+// ✅ 클라이언트 컴포넌트에서 사용
+'use client';
+import { useSupabaseClient, useCurrentUserId } from '@/lib/supabase';
+
+function MyComponent() {
+  const supabase = useSupabaseClient(); // 세션 기반 자동 인증
+  const userId = useCurrentUserId();
+  
+  const { data } = await supabase.from('posts').select('*'); // RLS 자동 적용
+}
+```
+
+**완료 기준:**
+- **클라이언트 컴포넌트에서만 사용 가능**
+- **'use client' 지시어 포함**
+- **서버 관련 코드 완전 제외**
+- **새로운 Third-Party Auth 방식 완전 적용**
+- **RLS 정책에서 auth.jwt()->>'sub' 정상 인식**
+- TypeScript 컴파일 오류 없음
+- **server-only 모듈 import 오류 없음**
+
+요청사항만 실행한다.
+```
+
+**3.4.2. 서버 Supabase 설정**
+
+AI에게 서버 전용 Supabase 클라이언트 구현을 요청한다:
+
+**프롬프트:**
 
 ```jsx
-/** @type {import('next').NextConfig} */
-const nextConfig = {
-  images: {
-    remotePatterns: [
-      {
-        protocol: 'https',
-        hostname: 'your-supabase-project.supabase.co',
-        pathname: '/storage/v1/object/public/**',
-      },
-    ],
-  },
+2025년 새로운 Clerk Third-Party Auth 방식을 사용한 서버 전용 Supabase 클라이언트를 구현해 주세요.
+
+**중요 변경사항:**
+- **JWT Template 방식 완전 deprecated (2025.04.01부터)**
+- **Third-Party Auth 방식으로 전면 변경**
+- **JWT Secret 공유 불필요** (보안 대폭 개선)
+- **새로운 accessToken 설정 방식 필수**
+- **auth() 함수 기반 서버 사이드 토큰 관리**
+
+**현재 상황:**
+- 2.5에서 Third-Party Auth 설정 완료
+- Clerk 세션에 'role': 'authenticated' 클레임 추가 완료
+- 데이터베이스 테이블 및 타입 정의 완료
+- **auth.jwt()->>'sub' 직접 사용 가능**
+- lib/supabase.ts (클라이언트 전용) 구현 완료
+
+**구현 대상:**
+- 파일 경로: `lib/supabase-server.ts`
+- 파일 역할: **서버 컴포넌트 및 API 라우트 전용** Supabase 클라이언트
+- **중요**: 클라이언트 관련 코드는 절대 포함하지 않음
+
+**주요 요구사항:**
+1. **서버 전용 설정**
+   - **'use client' 지시어 사용 금지**
+   - **auth() 함수 기반 서버 사이드 인증만 구현**
+   - **클라이언트 훅 사용 금지**
+
+2. **새로운 서버 설정 방식**
+   ```typescript
+   // ✅ 2025년 권장 방식 (서버 전용)
+   export async function createServerSupabaseClient(): Promise<SupabaseClient<Database>> {
+     const { userId, getToken } = auth();
+     
+     const supabase = createClient<Database>(
+       config.url,
+       config.anonKey,
+       {
+         global: {
+           headers: async () => {
+             if (userId) {
+               const token = await getToken();
+               return token ? { Authorization: `Bearer ${token}` } : {};
+             }
+             return {};
+           },
+         },
+         auth: {
+           persistSession: false,
+           autoRefreshToken: false,
+         },
+       }
+     );
+
+     return supabase;
+   }
+   ```
+
+3. **서버 전용 함수들**
+   - **createServerSupabaseClient()**: auth() 함수 기반 서버 클라이언트 생성
+   - **createAdminSupabaseClient()**: Service Role Key 기반 관리자 클라이언트
+   - **getCurrentUserIdServer()**: 서버에서 현재 사용자 ID 반환
+
+4. **타입 안전성**
+   - 환경 변수 타입 체크 (Service Role Key 포함)
+   - **Database 타입 완전 연동**
+   - **SupabaseServerClientType 타입 export**
+
+**기술적 요구사항:**
+- **@clerk/nextjs/server의 auth 함수만 사용**
+- **@clerk/nextjs의 useSession 훅 사용 금지**
+- **'use client' 지시어 사용 금지**
+- **Database 타입 완전 연동**
+- 환경 변수 존재 여부 확인 (SUPABASE_SERVICE_ROLE_KEY 포함)
+- **새 방식과 구 방식 차이점 주석으로 명확히 설명**
+
+**사용 예시 포함:**
+```typescript
+// ✅ 서버 컴포넌트에서 사용
+import { createServerSupabaseClient } from '@/lib/supabase-server';
+
+async function ServerComponent() {
+  const supabase = await createServerSupabaseClient(); // auth() 함수 기반
+  const { data } = await supabase.from('posts').select('*'); // RLS 자동 적용
 }
 
-module.exports = nextConfig
-```
+// ✅ API 라우트에서 사용
+import { createServerSupabaseClient } from '@/lib/supabase-server';
 
-1. Supabase Storage 정책 확인:
-    - Storage → Policies에서 READ 정책 활성화 확인
-
-### 5. API 라우트 502/500 에러
-
-### 증상: API 호출 시 서버 에러 발생
-
-```
-502 Bad Gateway
-500 Internal Server Error
-```
-
-**해결방법**:
-
-1. Vercel Functions 로그 확인:
-    - Vercel Dashboard → Functions 탭
-    - 실시간 로그에서 에러 메시지 확인
-2. 서버리스 함수 제한사항 확인:
-    - 실행 시간: 10초 이내 (Hobby 플랜)
-    - 메모리 사용량: 1024MB 이내
-3. 에러 처리 개선:
-
-```jsx
-// API 라우트에 적절한 에러 처리 추가
 export async function GET() {
-  try {
-    // API 로직
-  } catch (error) {
-    console.error('API Error:', error);
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
+  const supabase = await createServerSupabaseClient();
+  // ... API 로직
+}
+```
+
+**관리자 클라이언트 주의사항:**
+```typescript
+// ⚡ 관리자 권한 클라이언트 (신중하게 사용)
+export function createAdminSupabaseClient(): SupabaseClient<Database> {
+  if (!config.serviceRoleKey) {
+    throw new Error('SUPABASE_SERVICE_ROLE_KEY 환경 변수가 설정되지 않았습니다.');
   }
+  
+  // RLS 정책을 우회하므로 신중하게 사용
+  // 서버 사이드에서만 사용 (절대 클라이언트에 노출 금지)
 }
 ```
 
-### 6. CORS 에러
+**완료 기준:**
+- **서버 컴포넌트 및 API 라우트에서만 사용 가능**
+- **'use client' 지시어 없음**
+- **클라이언트 관련 코드 완전 제외**
+- **새로운 Third-Party Auth 방식 완전 적용**
+- **RLS 정책에서 auth.jwt()->>'sub' 정상 인식**
+- TypeScript 컴파일 오류 없음
+- **관리자 클라이언트 안전성 확보**
 
-### 증상: 클라이언트에서 API 호출 시 CORS 에러
+요청사항만 실행한다.
+```
+
+### 3.5. 블로그 특화 RLS 정책 (최신 Third-Party Auth 적용)
+
+2025년 새로운 방식에 맞는 효율적인  Row Level Security(RLS) 정책을 설정한다:
+
+**프롬프트:**
 
 ```
-Access to fetch at 'xxx' from origin 'xxx' has been blocked by CORS policy
+2025년 새로운 Clerk Third-Party Auth 방식에 최적화된 테이블 RLS 정책을 설정해 주세요.**
+
+**변경사항:**
+- **auth.jwt()->>'sub' 직접 사용 권장**
+- **TO authenticated 역할 명시 필수**
+- **requesting_user_id() 함수는 선택사항**
+- **role 클레임 'authenticated' 확인 가능**
+
+**현재 상황:**
+- Third-Party Auth 설정 완료
+- Clerk 세션에 role: 'authenticated' 클레임 포함
+- 블로그 테이블 생성 완료 (posts, comments, likes, categories)
+- blog-images Storage 버킷 생성 완료
+- **Storage 정책은 별도로 Supabase Dashboard에서 수동 설정 예정**
+
+**구현 대상:**
+- 파일 경로: `docs/modern-rls-policies.sql`
+- 파일 역할: 테이블 전용 최신 방식 RLS 정책
+
+**주요 요구사항:**
+1. **최신 RLS 패턴 적용 (테이블만)**
+   ```sql
+   -- ✅ 권장 방식: auth.jwt() 직접 사용
+   CREATE POLICY "posts_select_policy" ON posts
+     FOR SELECT TO authenticated USING (true);
+
+   CREATE POLICY "posts_insert_policy" ON posts
+     FOR INSERT TO authenticated WITH CHECK (
+       auth.jwt()->>'sub' IS NOT NULL
+     );
+
+   CREATE POLICY "posts_update_policy" ON posts
+     FOR UPDATE TO authenticated USING (
+       author_id = auth.jwt()->>'sub'
+     );
+   ```
+
+2. **블로그 테이블 정책**
+   - **posts**: 새로운 패턴 적용, 작성자만 수정/삭제 가능
+   - **comments**: auth.jwt()->>'sub' 사용, 작성자만 수정/삭제 가능
+   - **likes**: 중복 방지 로직 포함, 본인만 삭제 가능
+   - **categories**: 기본 authenticated 정책, 로그인 사용자만 관리
+
+3. **정책 이름 규칙**
+   - 테이블: "[테이블명]_[동작]_policy"
+
+**기술적 요구사항:**
+- **기존 테이블 정책 완전 삭제** (DROP POLICY IF EXISTS)
+- **RLS 활성화** (ALTER TABLE ... ENABLE ROW LEVEL SECURITY)
+- **TO authenticated 역할 명시적 사용**
+- **auth.jwt()->>'sub' 직접 활용**
+- 한글 주석으로 각 정책 설명
+- **Storage 관련 코드 제외** (별도 Dashboard 설정)
+
+**호환성 참고:**
+```sql
+-- 🟡 기존 방식 (여전히 작동하지만 권장하지 않음)
+-- requesting_user_id() = user_id
+
+-- ✅ 새 방식 (권장)
+-- auth.jwt()->>'sub' = user_id
 ```
 
-**해결방법**:
+**완료 기준:**
+- **4개 테이블 RLS 정책 모두 포함**
+- **모든 정책이 최신 Third-Party Auth 방식으로 작성됨**
+- **성능 및 보안 최적화된 정책**
+- **JWT 토큰 전달 시 모든 테이블 RLS 정책 정상 작동**
+- **Storage 정책은 별도 설정 안내 포함**
 
-1. API 라우트에 CORS 헤더 추가:
+**후속 작업:**
+- 테이블 RLS 정책 적용 후 Storage 정책을 `docs/storage-policies-guide.md` 가이드로 생성해주세요. 
+```
+
+AI가 제공한 최신 방식 RLS 정책을 Supabase에서 실행한다:
+
+1. **Supabase 대시보드 접속:** 해당 프로젝트 선택
+2. **SQL Editor 이동:** 좌측 사이드바에서 **"SQL Editor"** 클릭
+3. **SQL 쿼리 실행:**
+    - AI가 docs/modern-rls-policies.sql 파일에 제공한 RLS 정책 SQL을 복사하여 붙여넣기
+    - **"Run"** 버튼을 클릭하여 쿼리 실행
+
+**RLS 정책 적용 확인:**
+
+- **Authentication > Policies**에서 각 테이블의 RLS 정책이 올바르게 추가되었는지 확인
+- **Storage > Policies**에서 blog-images 버킷의 RLS 정책 확인
+- **2.6의 테스트 페이지에서 Third-Party Auth 및 RLS 정책 동작 확인**
+
+## 잠깐! "나의 블로그 보호 지침" 프롬프트
+
+위의 RLS 실행 이후 아래의 프롬프트를 대화창에 넣어서 실행해주시기 바랍니다: 본인 파일을 사용할 경우 
+
+```
+**모든 프롬프트 실행 전 자동 체크 지침**
+
+앞으로 내가 가이드에서 복사한 프롬프트를 보내면, 실행하기 전에 다음을 자동으로 체크해 주세요:
+
+**1단계: 현실 vs 프롬프트 비교**
+"이 프롬프트에서 요구하는 파일/폴더 구조와 님의 실제 구조를 먼저 비교해보겠습니다."
+
+**2단계: 차이점 확인**
+차이점 발견 시:
+"⚠️ 발견된 차이점:
+- 프롬프트 요구: [가이드에서 제시한 구조]  
+- 님의 실제: [사용자 실제 구조]
+어떻게 진행하시겠어요? 
+1) 님의 기존 구조 유지하며 적응
+2) 가이드 구조로 새로 생성  
+3) 다른 방법"
+
+**3단계: 확인 후 진행**
+차이점이 없을 때만:
+"님의 구조와 일치합니다. 바로 진행하겠습니다."
+
+**4단계: 실행 결과 검증**
+구현 후:
+"님의 기존 [관련기능]에 영향을 주지 않았는지 확인해 주세요."
+
+이 체크 프로세스를 이해했다면 "자동 체크 지침을 설정했습니다"라고 답해주세요.
+```
+
+## 4. 이미지 업로드 기능 구현
+
+### 4.1. Supabase Storage 설정
 
 ```jsx
+데이터베이스 설정이 완료되었으니, 이제 이미지 파일을 저장할 Storage를 설정해보자.
+
+**Supabase Storage 버킷 생성 가이드**
+
+**Supabase 대시보드에서 Storage 섹션으로 이동:**
+먼저 Supabase 대시보드에 로그인합니다.
+좌측 사이드바 메뉴에서 **Storage** 아이콘 (구름과 버킷 모양)을 클릭합니다.
+
+**새 버킷(Bucket) 생성 과정:**
+Storage 페이지로 이동하면 화면 상단에 "New bucket" (새 버킷) 버튼이 보일 것입니다. 이 버튼을 클릭합니다.
+새 버킷을 생성하기 위한 팝업 창 또는 설정 페이지가 나타납니다.
+
+**버킷(폴더) 설정 옵션 입력:**
+나타난 설정 화면에서 다음과 같은 정보를 입력합니다.
+
+- 버킷 이름 (Name): `blog-images`
+- Public bucket (공개 버킷):
+    - 체크 여부: 체크 (✓)
+- "save" 클릭:
+
+이제 blog-images라는 이름의 공개 버킷이 Supabase Storage에 생성되었습니다.
+파일 형식 제한은 별도의 RLS 정책(SQL 쿼리)을 통해 앞에서 수행되었습니다.
+```
+
+**Supabase Storage  정책 설정**
+
+앞에서 생성한 Supabase Storage 정책 설정 가이드에 따라 직접 설정해야 합니다. 
+
+```jsx
+# Supabase Storage 정책 설정 가이드
+
+## 개요
+`storage.objects` 테이블은 Supabase 시스템 테이블이므로 SQL로 직접 RLS 정책을 설정할 수 없습니다.  
+대신 Supabase Dashboard의 Storage 섹션에서 GUI를 통해 정책을 설정해야 합니다.
+
+## blog-images 버킷 Storage 정책 설정
+
+### 1. Supabase Dashboard 접속
+- [Supabase Dashboard](https://supabase.com/dashboard)에 로그인
+- 해당 프로젝트 선택
+
+### 2. Storage 섹션으로 이동
+- 좌측 사이드바에서 **Storage** 클릭
+- **Policies** 탭 선택
+
+### 3. 필요한 정책 4개 생성
+
+#### 3.1 SELECT 정책 (이미지 조회)
+```
+Policy Name: blog-images SELECT policy
+Policy Definition: SELECT
+Target Roles: anon, authenticated.  : 두 개를 설정한다. 
+USING expression: bucket_id = 'blog-images'
+```
+
+#### 3.2 INSERT 정책 (이미지 업로드)
+```
+Policy Name: blog-images INSERT policy  
+Policy Definition: INSERT
+Target Roles: authenticated
+WITH CHECK expression: bucket_id = 'blog-images' AND auth.jwt()->>'sub' IS NOT NULL
+```
+
+#### 3.3 UPDATE 정책 (이미지 수정)
+```
+Policy Name: blog-images UPDATE policy
+Policy Definition: UPDATE  
+Target Roles: authenticated
+USING expression: bucket_id = 'blog-images' AND (storage.foldername(name))[1] = auth.jwt()->>'sub'
+WITH CHECK expression: bucket_id = 'blog-images' AND (storage.foldername(name))[1] = auth.jwt()->>'sub'
+```
+
+#### 3.4 DELETE 정책 (이미지 삭제)
+```
+Policy Name: blog-images DELETE policy
+Policy Definition: DELETE
+Target Roles: authenticated
+USING expression: bucket_id = 'blog-images' AND (storage.foldername(name))[1] = auth.jwt()->>'sub'
+```
+
+## 설정 순서
+
+### 1단계: 정책 생성 화면 접근
+1. Storage > Policies 페이지에서 **"New policy"** 버튼 클릭
+2. **"For full customization"** 선택
+
+### 2단계: 각 정책 설정
+위의 4가지 정책을 순서대로 생성합니다.
+
+**공통 설정:**
+- **Allowed operation**: 해당 작업 선택 (SELECT, INSERT, UPDATE, DELETE)
+- **Target roles**: 위에 명시된 역할 선택
+- **Policy definition**: 위의 표현식 입력
+
+### 3단계: 정책 확인
+모든 정책 생성 후 Storage > Policies 페이지에서 다음이 표시되는지 확인:
+- ✅ blog-images SELECT policy (public)
+- ✅ blog-images INSERT policy (authenticated)  
+- ✅ blog-images UPDATE policy (authenticated)
+- ✅ blog-images DELETE policy (authenticated)
+
+## 2025년 새로운 방식 특징
+
+### auth.jwt()->>'sub' 사용
+- **기존 방식**: `auth.uid()` 또는 `auth.role()`
+- **새로운 방식**: `auth.jwt()->>'sub'` (Clerk 사용자 ID 직접 접근)
+- **장점**: Third-Party Auth와 완벽 호환, 보안 강화
+
+### 폴더 구조 기반 권한
+```
+(storage.foldername(name))[1] = auth.jwt()->>'sub'
+```
+- 업로드한 사용자만 자신의 이미지를 수정/삭제 가능
+- 폴더명에 사용자 ID가 포함되어 자동 권한 관리
+```
+
+### 4.2. 이미지 업로드 유틸리티 함수 작성
+
+AI에게 이미지 업로드를 위한 헬퍼 함수 작성을 요청한다: 동영상과 조금 다릅니다. 
+
+```markdown
+# 1. 클라이언트 전용 이미지 업로드 유틸리티 (React Hook)
+
+Supabase Storage를 사용하여 **클라이언트 컴포넌트**에서 이미지를 업로드하는 TypeScript 유틸리티 훅을 구현해 주세요. 이 훅은 브라우저의 `File` 객체를 받아 Supabase Storage에 업로드하고, 업로드된 파일의 공개 URL을 반환합니다.
+
+**현재 상황:**
+- Supabase Storage에 'blog-images' 공개 버킷 생성 완료
+- TypeScript 기반 프로젝트에서 타입 안전성 확보 필요
+- **2025년 새로운 Third-Party Auth 방식 사용**
+- 클라이언트 전용 Supabase 클라이언트 훅 (`useSupabaseClient`)은 `lib/supabase.ts`에 정의되어 있음
+
+**구현 대상:**
+- 파일 경로: `lib/upload-image-client.ts`
+- 파일 역할: 클라이언트 컴포넌트용 이미지 업로드 훅 및 URL 반환 유틸리티
+
+**주요 요구사항:**
+1.  **이미지 업로드 훅 기능 (`useUploadImage`):**
+    *   훅은 `(file: File) => Promise<{ success: boolean; url?: string; error?: string }>` 형태의 `upload` 함수를 반환해야 합니다.
+    *   `upload` 함수는 `File` 객체를 인자로 받아 처리합니다.
+    *   파일 형식 검증: `jpg`, `png`, `gif`, `webp`만 허용해야 합니다.
+    *   고유한 파일명 생성: 현재 시간과 랜덤 문자(`uuid`)를 조합하여 파일명 중복을 방지합니다.
+    *   Supabase Storage의 'blog-images' 버킷에 파일을 업로드합니다.
+    *   업로드된 파일의 공개 URL을 반환합니다.
+    *   파일 크기는 제한하지 않습니다.
+
+2.  **TypeScript 타입 정의:**
+    *   훅의 반환값 타입 (`UploadResult`)을 명확하게 정의합니다.
+    *   `File` 객체 타입을 활용합니다.
+    *   에러 타입 정의를 포함합니다.
+
+3.  **에러 처리:**
+    *   파일 형식 오류를 명확한 메시지로 처리합니다.
+    *   Supabase 업로드 실패 시 발생하는 오류를 처리하고 반환합니다.
+    *   네트워크 오류 등 예상치 못한 오류를 `try-catch`로 처리합니다.
+
+**기술적 요구사항:**
+-   **'use client' 지시어를 파일 최상단에 포함해야 합니다.**
+-   `@/lib/supabase`에서 `useSupabaseClient` 훅을 임포트하여 Supabase 클라이언트 인스턴스를 가져옵니다.
+-   `uuid` 패키지를 활용하여 고유 파일명을 생성합니다 (필요시 설치).
+-   각 단계별로 한글 주석을 추가하여 코드 이해도를 높입니다.
+-   성공/실패 결과를 명확히 반환하는 기본적인 에러 처리를 구현합니다.
+-   **2025년 새로운 Third-Party Auth 방식**에 맞게 `useSupabaseClient`가 Clerk JWT를 자동으로 포함하여 요청을 보내는 것을 활용합니다.
+
+**완료 기준:**
+-   `lib/upload-image-client.ts` 파일이 생성되고, 위에 명시된 모든 요구사항을 충족합니다.
+-   `useUploadImage` 훅이 정상적으로 동작하며, TypeScript 컴파일 오류가 없습니다.
+-   클라이언트 컴포넌트에서 이 훅을 사용하여 이미지를 성공적으로 업로드하고 테스트할 수 있습니다.
+```
+
+```markdown
+# 2. 서버 전용 이미지 업로드 유틸리티 (함수)
+
+Supabase Storage를 사용하여 **서버 컴포넌트 또는 API 라우트**에서 이미지를 업로드하는 TypeScript 함수를 구현해 주세요. 이 함수는 `Buffer` 또는 `Blob` 형태의 파일 데이터를 받아 Supabase Storage에 업로드하고, 업로드된 파일의 공개 URL을 반환합니다.
+
+**현재 상황:**
+- Supabase Storage에 'blog-images' 공개 버킷 생성 완료
+- TypeScript 기반 프로젝트에서 타입 안전성 확보 필요
+- **2025년 새로운 Third-Party Auth 방식 사용**
+- 서버 전용 Supabase 클라이언트 함수 (`createServerSupabaseClient`)는 `lib/supabase-server.ts`에 정의되어 있음
+
+**구현 대상:**
+- 파일 경로: `lib/upload-image-server.ts`
+- 파일 역할: 서버 컴포넌트/API 라우트용 이미지 업로드 함수 및 URL 반환 유틸리티
+
+**주요 요구사항:**
+1.  **이미지 업로드 함수 기능 (`uploadImageServer`):**
+    *   함수 시그니처: `(fileData: Buffer | Blob, fileName: string, contentType: string) => Promise<{ success: boolean; url?: string; error?: string }>`
+    *   `fileData`는 이미지 파일의 실제 이진 데이터 (Buffer 또는 Blob), `fileName`은 원본 파일명 (확장자 포함), `contentType`은 파일의 MIME 타입을 나타냅니다.
+    *   파일 형식 검증: `jpg`, `png`, `gif`, `webp`만 허용해야 합니다.
+    *   고유한 파일명 생성: `uuid`를 조합하여 파일명 중복을 방지합니다.
+    *   Supabase Storage의 'blog-images' 버킷에 파일을 업로드합니다.
+    *   업로드된 파일의 공개 URL을 반환합니다.
+    *   파일 크기는 제한하지 않습니다.
+
+2.  **TypeScript 타입 정의:**
+    *   함수의 매개변수 및 반환값 타입 (`UploadResult`)을 명확하게 정의합니다.
+    *   `Buffer` 및 `Blob` 타입 활용을 포함합니다.
+    *   에러 타입 정의를 포함합니다.
+
+3.  **에러 처리:**
+    *   파일 형식 오류를 명확한 메시지로 처리합니다.
+    *   Supabase 업로드 실패 시 발생하는 오류를 처리하고 반환합니다.
+    *   네트워크 오류 등 예상치 못한 오류를 `try-catch`로 처리합니다.
+
+**기술적 요구사항:**
+-   **파일 최상단에 'use client' 지시어를 포함하지 않습니다.** (이 파일은 서버에서만 실행됩니다.)
+-   `@/lib/supabase-server`에서 `createServerSupabaseClient` 함수를 임포트하여 Supabase 클라이언트 인스턴스를 가져옵니다.
+-   `uuid` 패키지를 활용하여 고유 파일명을 생성합니다 (필요시 설치).
+-   각 단계별로 한글 주석을 추가하여 코드 이해도를 높입니다.
+-   성공/실패 결과를 명확히 반환하는 기본적인 에러 처리를 구현합니다.
+-   **2025년 새로운 Third-Party Auth 방식**에 맞게 `createServerSupabaseClient`가 요청의 인증 정보를 활용하여 Clerk JWT를 포함하여 요청을 보내는 것을 활용합니다.
+
+**완료 기준:**
+-   `lib/upload-image-server.ts` 파일이 생성되고, 위에 명시된 모든 요구사항을 충족합니다.
+-   `uploadImageServer` 함수가 정상적으로 동작하며, TypeScript 컴파일 오류가 없습니다.
+-   API 라우트 또는 서버 컴포넌트에서 이 함수를 사용하여 이미지를 성공적으로 업로드하고 테스트할 수 있습니다.
+```
+
+---
+
+### 4.3. 이미지 업로드 컴포넌트 구현
+
+AI에게 이미지 업로드 UI 컴포넌트 작성을 요청한다:
+
+**프롬프트:**
+
+```
+블로그 게시물의 커버 이미지를 업로드할 수 있는 React 컴포넌트를 구현해 주세요.
+
+**현재 상황:**
+- lib/upload-image.ts 유틸리티 함수 구현 완료
+- TypeScript 기반 React 컴포넌트 필요
+
+**구현 대상:**
+- 파일 경로: `components/image-upload.tsx`
+- 파일 역할: 이미지 선택, 미리보기, 업로드 UI 제공
+
+**주요 요구사항:**
+1. 기본 UI 구성
+   - 파일 선택 버튼 (복잡한 드래그앤드롭 제외)
+   - 선택한 이미지 미리보기
+   - 업로드 버튼과 진행 상태 표시
+   - 업로드 완료 시 URL을 부모 컴포넌트로 전달
+
+2. Props 인터페이스
+   - onImageUploaded: (url: string) => void - 업로드 완료 콜백
+   - initialImage?: string - 초기 이미지 URL (수정 시 사용)
+   - className?: string - 추가 스타일링
+
+3. 상태 관리
+   - 선택된 파일 상태
+   - 미리보기 이미지 URL
+   - 업로드 진행 상태 (로딩, 성공, 실패)
+   - 에러 메시지
+
+**기술적 요구사항:**
+- 'use client' 컴포넌트로 구현
+- TypeScript Props 인터페이스 정의
+- TailwindCSS와 Lucide React 아이콘 사용
+- useState와 기본 이벤트 핸들러 사용
+- 모바일 친화적 디자인
+- **클라이언트 컴포넌트에서는 useSupabaseClient 훅 사용**
+- **import 경로**: `import { useSupabaseClient } from '@/lib/supabase';`
+- **서버에서는 createServerSupabaseClient 함수 사용**
+- **새로운 Third-Party Auth 방식의 클라이언트 활용**
+
+**완료 기준:**
+- 이미지 선택 및 미리보기 정상 동작
+- 업로드 진행 상태 표시
+- 업로드 완료 시 콜백 함수 호출
+- 에러 상황에 대한 적절한 사용자 피드백
+
+요청사항만 실행한다.
+
+```
+
+### 4.4. 게시물 작성 폼에 이미지 업로드 통합
+
+기존의 게시물 작성 폼에 이미지 업로드 기능을 통합해보자.
+
+AI에게 게시물 작성 폼 업데이트를 요청한다:
+
+**프롬프트:**
+
+```
+게시물 작성 폼에 커버 이미지 업로드 기능을 통합해 주세요.
+
+**현재 상황:**
+- ImageUpload 컴포넌트 구현 완료
+- 8-9장에서 구현한 블로그 구조와 통합 필요
+
+**구현 대상:**
+- 파일 경로: `components/admin/post-form.tsx` (새로 생성)
+- 파일 역할: 관리자용 게시물 작성/수정 폼
+
+**주요 요구사항:**
+1. 폼 구성 요소
+   - 게시물 제목 입력 필드
+   - 커버 이미지 업로드 (ImageUpload 컴포넌트 활용)
+   - 카테고리 선택 드롭다운
+   - 게시물 내용 입력 (Textarea)
+   - 저장/취소 버튼
+
+2. 데이터 구조
+   - title: 제목 (string)
+   - content: 내용 (string)
+   - slug: URL용 제목 (자동 생성)
+   - coverImageUrl: 커버 이미지 URL (optional)
+   - categoryId: 카테고리 ID (optional)
+
+3. 폼 동작
+   - 이미지 업로드 완료 시 URL 상태 업데이트
+   - 제목 입력 시 slug 자동 생성 (안전한 한글 지원)
+     * 영문 소문자, 숫자, 한글, 하이픈만 허용
+     * 공백을 하이픈으로 변환
+     * 연속된 하이픈 제거
+     * 정규식 사용 시 하이픈 이스케이프 처리 필수
+   - 폼 검증 (필수 필드 체크)
+
+**기술적 요구사항:**
+- 'use client' 컴포넌트로 구현
+- useState로 폼 상태 관리
+- TypeScript 타입 정의 활용
+- ShadCN UI 컴포넌트 활용 (Button, Input, Textarea, Select)
+- Select 컴포넌트 사용 시 주의사항:
+  * SelectItem에 빈 문자열("")을 value로 사용하면 안 됨
+  * 카테고리가 없는 경우 "none"과 같은 특정 값을 사용하고, 내부적으로 처리
+  * 예: `<SelectItem value="none">카테고리 없음</SelectItem>`
+- **클라이언트 컴포넌트에서는 useSupabaseClient 훅 사용**
+- **import 경로**: `import { useSupabaseClient } from '@/lib/supabase';`
+- **서버에서는 createServerSupabaseClient 함수 사용**
+- **새로운 Third-Party Auth 방식의 클라이언트 활용**
+
+**Slug 생성 함수 요구사항:**
+- 한글 유니코드 범위: \uac00-\ud7a3 (완성형 한글)
+- 정규식에서 하이픈 사용 시 반드시 이스케이프 처리: \-
+- 안전한 문자만 허용: [a-z0-9가-힣\s\-]
+- 예시 함수:
+```typescript
+function generateSlug(title: string): string {
+  return title
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9가-힣\s\-]/g, '') // 안전한 문자만 허용
+    .replace(/\s+/g, '-') // 공백을 하이픈으로
+    .replace(/-+/g, '-') // 연속 하이픈 제거
+    .replace(/^-|-$/g, '') // 앞뒤 하이픈 제거
+}
+
+1. 폼 데이터 처리
+    - 특수 값 처리: 카테고리 선택에서 "none" 값은 실제 제출 시 빈 문자열로 변환
+    - 초기 데이터 로딩 시 빈 categoryId는 "none" 값으로 변환
+
+**완료 기준:**
+
+- 모든 폼 필드가 정상 동작
+- Select 컴포넌트에서 빈 문자열 사용으로 인한 오류 없음
+- 이미지 업로드 통합 완료
+- 폼 데이터가 올바른 형식으로 수집
+- 기본적인 검증 및 에러 처리
+
+요청사항만 실행한다.
+```
+
+**현재 구현 완료된 기능들**
+
+✅ 완전히 작동 가능한 기능들
+
+- Supabase 연결 및 설정
+    - 환경변수 설정 완료
+    - 데이터베이스 연결 테스트 가능
+- 이미지 업로드 시스템
+    - Supabase Storage 'blog-images' 버킷 연동
+    - 완전한 이미지 업로드 기능 (파일 검증, 고유명 생성, URL 반환)
+- 게시물 작성 폼 UI
+    - 제목, 슬러그, 카테고리, 커버이미지, 내용 입력
+    - 폼 검증 및 에러 처리
+    - 이미지 업로드 통합
+
+```jsx
+새 대화창을 열어서 시작합니다.
+
+dev.md 에서 이 작업의 맥락을 파악하시오
+
+프로젝트 전역 설정을 지금 한번 더 해주세요: ai의 기억력 한계
+```
+
+## 5. Supabase TypeScript 클라이언트를 활용한 CRUD 구현 및 즉시 테스트
+
+**이 부분에서 백엔드 완성합니다.**
+
+CRUD는 데이터베이스 기본 작업 4가지를 나타내는 약어
+
+| 약어 | 영어 | 한국어 | 데이터베이스 | HTTP 메서드 |
+| --- | --- | --- | --- | --- |
+| C | Create | 생성 | INSERT | POST |
+| R | Read | 읽기/조회 | SELECT | GET |
+| U | Update | 수정 | UPDATE | PUT |
+| D | Delete | 삭제 | DELETE | DELETE |
+
+### 5.1. 게시물 API 라우트 구현
+
+이제 Supabase TypeScript 클라이언트를 직접 사용하여 데이터베이스 작업을 수행한다.
+
+AI에게 게시물 CRUD API 구현을 요청한다:
+
+AI에게 게시물 CRUD API 구현을 요청한다.
+
+```
+사용자(브라우저) → API 라우트 → Supabase 데이터베이스
+```
+
+- **사용자**: "게시물 목록 보여줘"
+- **API 라우트**: 요청을 받아서 데이터베이스에 쿼리
+- **데이터베이스**: 게시물 데이터 반환
+- **API 라우트**: 사용자에게 데이터 전달
+
+**TypeScript API 라우트 구현 프롬프트**
+
+```
+블로그 게시물의 CRUD 작업을 위한 TypeScript API 라우트를 구현해 주세요.
+
+**현재 상황:**
+- Supabase 데이터베이스 및 타입 설정 완료
+- `posts` 테이블 및 RLS 정책 설정 완료
+- Clerk JWT가 Supabase RLS와 통합 완료
+- **2025년 새로운 Third-Party Auth 방식 사용**
+
+**구현 대상:**
+- 파일 경로: `app/api/posts/route.ts` (모든 게시물 조회 및 새 게시물 생성)
+- 파일 경로: `app/api/posts/[id]/route.ts` (특정 게시물 조회, 수정, 삭제)
+- 파일 역할: Clerk 인증 기반 게시물 CRUD API 엔드포인트
+
+**주요 요구사항:**
+
+1.  **`app/api/posts/route.ts`:**
+    *   **GET: 모든 게시물 조회** (페이지네이션 포함)
+        *   최신순으로 게시물을 조회합니다.
+        *   페이지네이션을 구현하여, 요청 시 `page` 및 `limit` 쿼리 파라미터를 처리합니다.
+        *   각 게시물에 연결된 카테고리 정보도 함께 조회합니다 (JOIN 쿼리).
+        *   조회된 데이터를 JSON 형식으로 반환합니다.
+        *   데이터가 없을 경우 빈 배열을 반환합니다.
+    *   **POST: 새 게시물 생성 (**Clerk 인증 필수**)**
+        *   요청 바디에서 `title`, `content`, `slug`, **`cover_image_url` (선택 사항), `category_id` (선택 사항)** 필드들을 정확히 파싱합니다.
+        *   Clerk `auth()` 함수를 사용하여 현재 로그인한 사용자 (`user_id`)를 확인합니다. 인증되지 않은 요청은 401 Unauthorized 응답을 반환합니다.
+        *   확인된 `user_id`를 게시물의 `author_id`로 사용합니다.
+        *   파싱된 데이터와 `author_id`를 사용하여 `posts` 테이블에 새 게시물을 삽입합니다.
+        *   **[매우 중요] `cover_image_url`과 `category_id` 필드가 요청에 포함된 경우, Supabase `insert` 쿼리에 반드시 포함시켜 DB에 저장되도록 합니다. 이들이 `NULL`로 저장되지 않도록 철저히 확인합니다.**
+        *   삽입 성공 시 생성된 게시물 정보를 JSON 형식으로 반환하고, 201 Created 상태 코드를 사용합니다.
+        *   데이터 유효성 검사 (필수 필드 누락, 슬러그 중복 등)를 수행하고, 유효성 검사 실패 시 400 Bad Request 응답을 반환합니다.
+
+2.  **`app/api/posts/[id]/route.ts`:**
+    *   **GET: 특정 게시물 조회**
+        *   URL의 동적 세그먼트 `[id]`를 사용하여 게시물 ID를 가져옵니다.
+        *   해당 ID의 게시물을 조회하고, 연결된 카테고리 정보도 함께 조회합니다.
+        *   게시물이 존재하지 않으면 404 Not Found 응답을 반환합니다.
+        *   조회된 데이터를 JSON 형식으로 반환합니다.
+    *   **PUT: 게시물 수정 (**작성자 본인만 가능**)**
+        *   URL의 `[id]`를 사용하여 게시물 ID를 가져옵니다.
+        *   요청 바디에서 수정될 필드들(`title`, `content`, `slug`, **`cover_image_url` (선택 사항), `category_id` (선택 사항)** 등)을 파싱합니다.
+        *   Clerk `auth()` 함수로 현재 로그인한 사용자 (`user_id`)를 확인합니다.
+        *   조회된 게시물의 `author_id`와 현재 로그인한 `user_id`가 일치하는지 확인하여 작성자만 수정 가능하도록 합니다. 권한이 없는 요청은 403 Forbidden 응답을 반환합니다.
+        *   게시물이 존재하지 않으면 404 Not Found 응답을 반환합니다.
+        *   데이터베이스에 해당 게시물을 업데이트하고, 업데이트된 게시물 정보를 JSON 형식으로 반환합니다.
+        *   **[매우 중요] `cover_image_url`과 `category_id` 필드가 요청에 포함된 경우, Supabase `update` 쿼리에 반드시 포함시켜 DB에 저장되도록 합니다. 이들이 `NULL`로 저장되지 않도록 철저히 확인합니다.**
+    *   **DELETE: 게시물 삭제 (**작성자 본인만 가능**)**
+        *   URL의 `[id]`를 사용하여 게시물 ID를 가져옵니다.
+        *   Clerk `auth()` 함수로 현재 로그인한 사용자 (`user_id`)를 확인합니다.
+        *   조회된 게시물의 `author_id`와 현재 로그인한 `user_id`가 일치하는지 확인하여 작성자만 삭제 가능하도록 합니다. 권한이 없는 요청은 403 Forbidden 응답을 반환합니다.
+        *   게시물이 존재하지 않으면 404 Not Found 응답을 반환합니다.
+        *   데이터베이스에서 해당 게시물을 삭제하고, 204 No Content 상태 코드를 반환합니다.
+
+**Clerk 인증 로직 요구사항:**
+*   `@clerk/nextjs`의 `auth()` 함수를 사용하여 Clerk 사용자 정보(`userId`)를 확인합니다.
+*   인증되지 않은 요청에 대해서는 `NextResponse.json({ error: '인증이 필요합니다' }, { status: 401 });`를 반환합니다.
+*   권한 없는 요청(작성자 불일치 등)에 대해서는 `NextResponse.json({ error: '권한이 없습니다' }, { status: 403 });`를 반환합니다.
+
+**[중요] 데이터 필드명 통일 지침:**
+-   **프론트엔드, API 요청/응답, DB 컬럼명 모두에서 게시물의 커버 이미지 URL 필드는 반드시 `cover_image_url` (snake_case)로 통일하여 사용합니다.**
+-   **프론트엔드, API 요청/응답, DB 컬럼명 모두에서 카테고리 ID 필드는 반드시 `category_id` (snake_case)로 통일하여 사용합니다.**
+-   `camelCase`와 `snake_case`의 혼용을 금지합니다.
+-   TypeScript 인터페이스, API 요청/응답, DB 컬럼명까지 일관성 있게 유지합니다.
+-   예시 JSON: `{"title": "제목", "content": "내용", "cover_image_url": "https://...", "category_id": "tech"}`
+
+**기술적 요구사항:**
+-   `lib/supabase-server.ts`에서 생성한 서버 전용 Supabase 클라이언트 (`createServerSupabaseClient`)를 활용합니다. `import { createServerSupabaseClient } from '@/lib/supabase-server';` 경로를 준수합니다.
+-   복잡한 ORM 없이 `supabase.from().select()`, `.insert()`, `.update()`, `.delete()` 메소드를 직접 사용하여 데이터베이스 작업을 수행합니다.
+-   Clerk `auth()` 함수를 사용하여 사용자 인증 및 `author_id` 확인을 구현합니다.
+-   RLS 정책과 API 레벨 인증을 연동하여 이중 보안을 확보합니다.
+-   기본적인 `try-catch` 문을 사용하여 모든 API 요청에 대한 에러 처리를 구현합니다.
+-   적절한 HTTP 상태 코드 (200 OK, 201 Created, 204 No Content, 400 Bad Request, 401 Unauthorized, 403 Forbidden, 404 Not Found)를 반환합니다.
+-   TypeScript 컴파일 오류가 없도록 데이터베이스 스키마와 일치하는 타입을 사용하고, 요청/응답 데이터 타입을 명확히 정의합니다.
+-   **클라이언트 컴포넌트 관련 코드를 절대 포함하지 않습니다.**
+
+**완료 기준:**
+-   모든 CRUD 작업 (`GET` 게시물 목록, `POST` 게시물 생성, `GET` 특정 게시물, `PUT` 게시물 수정, `DELETE` 게시물 삭제)이 TypeScript로 안전하게 구현됩니다.
+-   Clerk 인증 및 권한 확인 로직 (`author_id` 일치 여부)이 완벽하게 구현됩니다.
+-   RLS 정책과 API 레벨 인증이 모두 정상 작동하여 데이터 무결성과 보안이 확보됩니다.
+-   **`cover_image_url`과 `category_id` 필드가 게시물 생성 및 수정 시 DB에 정확히 저장되고, 조회 시에도 올바르게 반환됩니다.** (NULL 문제 해결)
+-   에러 처리 및 응답 형식이 일관됩니다.
+-   실제 API 호출 테스트 시 예상대로 동작합니다.
+
+요청사항만 실행한다.
+```
+
+확인 사항:
+
+- 응답 상태 코드 확인
+- 응답 데이터 형식 확인
+- 데이터베이스에 실제 저장 확인
+- 에러 메시지 정상 표시 확인
+
+모든 테스트가 통과하면 다음 단계로 진행하세요.
+
+### 5.2. 카테고리 API 라우트 구현
+
+카테고리 API 추가:
+
+**프롬프트:**
+
+```
+
+카테고리 관리를 위한 TypeScript API 라우트를 구현해 주세요.
+
+**현재 상황:**
+
+- 게시물 API 구현 완료
+- categories 테이블 및 RLS 정책 설정 완료
+- **2025년 새로운 Third-Party Auth 방식 사용**
+
+**구현 대상:**
+
+- 파일 경로: `app/api/categories/route.ts`
+- 파일 경로: `app/api/categories/[slug]/posts/route.ts`
+- 파일 역할: 카테고리 관리 및 카테고리별 게시물 조회
+
+**주요 요구사항:**
+
+1. app/api/categories/route.ts
+    - GET: 모든 카테고리 조회
+    - POST: 새 카테고리 생성 (인증된 사용자만)
+2. app/api/categories/[slug]/posts/route.ts
+    - GET: 특정 카테고리의 게시물 조회
+3. TypeScript 관계형 쿼리
+    - 카테고리와 게시물 JOIN 쿼리
+    - posts 테이블의 category_id로 연결
+    - 카테고리 정보 포함한 게시물 데이터 반환
+
+**기술적 요구사항:**
+
+- Database 타입을 활용한 타입 안전성
+- **lib/supabase.ts의 새로운 서버 클라이언트 사용**
+- Supabase의 .select() 메소드로 관계형 데이터 조회
+- 기본적인 CRUD 작업만 구현
+- 복잡한 조인 쿼리는 제외
+- **lib/supabase-server.ts의 createServerSupabaseClient 사용**
+- **import 경로**: `import { createServerSupabaseClient } from '@/lib/supabase-server';`
+- **클라이언트 컴포넌트에서는 절대 사용 금지**
+
+**완료 기준:**
+
+- 카테고리 CRUD 정상 동작
+- 카테고리별 게시물 필터링 기능
+- TypeScript 컴파일 오류 없음
+
+요청사항만 실행한다.
+
+```
+
+### 5.3. 추가 API 엔드포인트 구현
+
+**프롬프트:**
+
+```
+게시물 조회를 위한 추가 API 엔드포인트를 구현해 주세요.
+
+**구현 대상:**
+
+- 파일 경로: `app/api/posts/slug/[slug]/route.ts`
+- 파일 역할: slug로 게시물 조회
+
+**주요 요구사항:**
+
+1. GET /api/posts/slug/[slug]
+    - URL의 slug로 게시물 조회
+    - 카테고리 정보 포함
+    - 존재하지 않으면 404 응답
+
+**기술적 요구사항:**
+
+- SEO 친화적 URL 지원
+- **lib/supabase.ts의 새로운 서버 클라이언트 사용**
+- 카테고리 JOIN 쿼리
+- TypeScript 타입 안전성
+- **lib/supabase-server.ts의 createServerSupabaseClient 사용**
+- **import 경로**: `import { createServerSupabaseClient } from '@/lib/supabase-server';`
+- **클라이언트 컴포넌트에서는 절대 사용 금지**
+
+**완료 기준:**
+
+- slug로 게시물 정확히 조회
+- 카테고리 정보 포함
+- 404 처리 정상 작동
+
+요청사항만 실행한다.
+
+```
+
+## 6. 블로그 페이지 데이터베이스 연동
+
+**프런트엔드 구현**
+
+### 6.1. 관리자 게시물 작성 페이지 구현
+
+AI에게 관리자 페이지 구현을 요청한다:
+
+**프롬프트:**
+
+```
+관리자가 게시물을 작성할 수 있는 페이지를 구현해 주세요.
+
+**현재 상황:**
+- 게시물 CRUD API 구현 완료
+- 이미지 업로드 컴포넌트 구현 완료
+- 카테고리 API 구현 완료
+- **2025년 새로운 Third-Party Auth 방식 사용**
+
+**구현 대상:**
+- 파일 경로: `app/admin/posts/create/page.tsx`
+- 파일 역할: 관리자용 게시물 작성 페이지
+
+**주요 요구사항:**
+1.  **게시물 작성 폼 구성 요소:**
+    *   **제목 입력 필드:** 게시물의 제목을 입력합니다.
+    *   **커버 이미지 업로드:** 기존 `ImageUpload` 컴포넌트를 활용하여 이미지를 업로드하고, **업로드 완료 시 `onImageUploaded` 콜백을 통해 반환되는 `coverImageUrl`을 폼의 상태에 정확히 저장합니다.**
+    *   **카테고리 선택 드롭다운:** 실제 데이터베이스 (`/api/categories`)에서 카테고리 목록을 조회하여 드롭다운을 구성하고, **사용자가 선택한 `category_id` 값을 폼의 상태에 정확히 저장합니다.** (카테고리가 없을 경우 "none"과 같은 특정 값으로 처리)
+    *   **게시물 내용 입력:** `Textarea`를 사용하여 게시물 내용을 입력합니다.
+    *   **저장/취소 버튼:** 폼 데이터를 저장하거나 작성을 취소합니다.
+
+2.  **데이터베이스 연동:**
+    *   **카테고리 목록 실제 API에서 조회:** `GET /api/categories` 엔드포인트를 호출하여 드롭다운에 사용할 카테고리 목록을 가져옵니다.
+    *   **게시물 저장 시 실제 API 호출:** 폼 제출 시 `POST /api/posts` 엔드포인트로 API 요청을 보냅니다.
+    *   **성공 시 게시물 상세 페이지로 이동:** 게시물 저장이 성공하면 해당 게시물의 상세 페이지 (`/posts/[slug]`)로 사용자를 리다이렉트합니다.
+    *   **실패 시 에러 메시지 표시:** 게시물 저장에 실패하면 사용자에게 명확한 에러 메시지를 표시합니다.
+
+3.  **인증 확인:**
+    *   Clerk 인증 상태를 확인합니다.
+    *   미인증 사용자가 이 페이지에 접근하는 것을 차단하고, 적절한 처리 (예: 로그인 페이지로 리다이렉트)를 수행합니다.
+
+**기술적 요구사항:**
+-   **'use client' 컴포넌트로 구현해야 합니다.**
+-   실제 API 엔드포인트 (`/api/posts`, `/api/categories`)를 사용합니다.
+-   **폼 상태 관리:** `useState` 훅을 사용하여 `title`, `content`, `slug`, **`coverImageUrl`**, **`categoryId`** 등의 폼 필드 상태를 효율적으로 관리합니다.
+-   **데이터 변환 및 전달:**
+    *   `ImageUpload` 컴포넌트의 `onImageUploaded` 콜백을 통해 받은 `coverImageUrl`을 폼 상태에 반영하고, 폼 제출 시 API 요청 페이로드에 `cover_image_url` 필드로 포함해야 합니다.
+    *   카테고리 드롭다운에서 선택된 `categoryId`를 폼 상태에 반영하고, 폼 제출 시 API 요청 페이로드에 `category_id` 필드로 포함해야 합니다.
+    *   `title` 입력 시 `slug`를 자동으로 생성하는 함수를 포함합니다 (영문 소문자, 숫자, 한글, 하이픈만 허용, 공백 하이픈 변환, 연속 하이픈 제거, 앞뒤 하이픈 제거).
+-   TypeScript 타입 정의를 활용하여 폼 데이터 구조와 API 요청/응답의 타입 안전성을 확보합니다.
+-   ShadCN UI 컴포넌트(`Button`, `Input`, `Textarea`, `Select`)를 적극적으로 활용합니다.
+-   Select 컴포넌트 사용 시 주의사항: `SelectItem`에 빈 문자열("")을 value로 사용하지 않으며, 카테고리가 없는 경우 "none"과 같은 특정 값을 사용하여 내부적으로 처리합니다 (`<SelectItem value="none">카테고리 없음</SelectItem>` 예시).
+-   로딩 상태와 에러 처리 UI를 적절하게 구현합니다.
+-   **클라이언트 컴포넌트에서는 `@/lib/supabase`의 `useSupabaseClient` 훅을 사용하며, `import { useSupabaseClient } from '@/lib/supabase';` 경로를 준수합니다.**
+-   **서버에서는 `createServerSupabaseClient` 함수를 사용하지만, 이 파일은 클라이언트 컴포넌트이므로 직접 사용하지 않고 API 라우트 호출을 통해 간접적으로 사용됩니다.**
+-   **새로운 Third-Party Auth 방식**과 호환되도록 구현합니다.
+
+**완료 기준:**
+-   관리자가 실제로 게시물을 작성하고 저장할 수 있습니다.
+-   저장된 게시물이 데이터베이스에 성공적으로 저장됩니다.
+-   **이미지 업로드 기능이 정상 작동하며, `cover_image_url`이 DB에 정확히 저장되고 나중에 렌더링됩니다.**
+-   **카테고리 선택 기능이 실제 데이터 기반으로 작동하며, `category_id`가 DB에 정확히 저장되고 나중에 필터링에 사용됩니다.**
+-   폼의 모든 필드 (제목, 내용, 슬러그, 커버 이미지, 카테고리)가 정상적으로 동작하고 유효성 검사가 적용됩니다.
+-   저장 성공 시 상세 페이지로 리다이렉트되며, 실패 시 에러 메시지가 표시됩니다.
+
+요청사항만 실행한다.
+```
+
+### 6.1.5. 관리자 페이지 접근 링크 추가
+
+**프롬프트:**
+
+```
+네비게이션에 관리자 페이지 접근 링크를 추가해 주세요.
+
+**현재 상황:**
+- 관리자 게시물 작성 페이지 구현 완료
+- Header 컴포넌트에 네비게이션 존재
+
+**구현 대상:**
+- 파일 경로: `components/common/header.tsx` (기존 파일 수정)
+- 파일 역할: 관리자 메뉴 추가
+
+**주요 요구사항:**
+1. 인증된 사용자에게만 관리자 메뉴 표시
+   - "새 글 작성" 링크 추가
+   - /admin/posts/create로 연결
+
+2. 조건부 렌더링
+   - SignedIn 컴포넌트 내부에 표시
+   - 일반 네비게이션과 구분되게 표시
+
+**완료 기준:**
+- 로그인한 사용자에게만 "새 글 작성" 메뉴 표시
+- 클릭 시 관리자 페이지로 이동
+
+요청사항만 실행한다.
+
+```
+
+### 6.2. 홈페이지 실제 API 연동
+
+AI에게 홈페이지 데이터베이스 연동을 요청한다:
+
+**프롬프트:**
+
+```
+홈페이지를 실제 Supabase 데이터베이스와 연동해 주세요.
+
+**현재 상황:**
+- 홈페이지가 mockData 사용 중
+- 게시물 및 카테고리 API 구현 완료
+- **2025년 새로운 Third-Party Auth 방식 사용**
+
+**구현 대상:**
+- 파일 경로: `app/page.tsx` (기존 파일 수정)
+- 파일 역할: 데이터베이스 기반 홈페이지
+
+**주요 요구사항:**
+1. MOCK 데이터 완전 제거
+   - mockData.ts import 제거
+   - 모든 mock 함수 호출 제거
+
+2. 실제 데이터베이스 연동
+   - Supabase 클라이언트 직접 사용
+   - **서버 컴포넌트이므로 서버 클라이언트 사용**
+   - 최신 게시물 3개 조회
+   - 카테고리 목록 조회
+
+3. 빈 상태 처리
+   - 게시물이 없을 때 안내 메시지
+   - 관리자 페이지로 유도 버튼
+
+**기술적 요구사항:**
+- 서버 컴포넌트에서 직접 Supabase 쿼리
+- **lib/supabase.ts의 createServerSupabaseClient 사용**
+- 에러 발생 시 빈 배열 반환
+- TypeScript 타입 안전성 확보
+
+**완료 기준:**
+- 실제 데이터베이스의 게시물이 홈페이지에 표시됨
+- 새로 작성한 게시물이 즉시 반영됨
+- MOCK 데이터 관련 코드가 완전히 제거됨
+
+요청사항만 실행한다.
+
+```
+
+### 6.2.5. 홈페이지 연동 즉시 확인
+
+**프롬프트:**
+
+```
+홈페이지가 실제 데이터베이스와 올바르게 연동되었는지 확인해 주세요.
+
+**확인 사항:**
+1. 브라우저에서 홈페이지 새로고침
+2. 콘솔에서 에러 확인
+3. 네트워크 탭에서 Supabase 요청 확인
+
+**테스트 시나리오:**
+1. 데이터가 없을 때: "아직 게시물이 없습니다" 메시지 확인
+2. 관리자 페이지에서 게시물 작성
+3. 홈페이지로 돌아와서 새 게시물 표시 확인
+
+**문제 해결:**
+- 데이터가 표시되지 않으면 Supabase 대시보드에서 데이터 확인
+- RLS 정책 확인 (읽기 권한)
+- 환경 변수 설정 확인
+
+만일 환경변수 연결이 안되면 기존의 테스트 페이지를 활용한다.
+
+요청사항만 실행한다.
+
+```
+
+### 6.3. 게시물 목록 페이지 실제 API 연동
+
+**프롬프트:**
+
+```
+게시물 목록 페이지를 실제 데이터베이스와 연동해 주세요.
+
+**현재 상황:**
+- 게시물 목록 페이지가 mockData 사용 중
+- 게시물 API 구현 완료
+- **2025년 새로운 Third-Party Auth 방식 사용**
+
+**구현 대상:**
+- 파일 경로: `app/posts/page.tsx` (기존 파일 수정)
+- 파일 역할: 데이터베이스 기반 게시물 목록
+
+**주요 요구사항:**
+1. MOCK 데이터 제거
+   - mockData import 및 사용 코드 제거
+
+2. 실제 데이터베이스 연동
+   - Supabase에서 모든 게시물 조회
+   - **서버 컴포넌트이므로 서버 클라이언트 사용**
+   - 카테고리 정보 포함 (join)
+   - 최신순 정렬
+
+3. 기존 PostCard 컴포넌트 활용
+   - 데이터 구조 맞춤 변환
+   - 타입 안전성 확보
+
+**기술적 요구사항:**
+- **lib/supabase.ts의 createServerSupabaseClient 사용**
+
+**완료 기준:**
+- 실제 데이터베이스의 모든 게시물 표시
+- 카테고리 정보 정상 표시
+- 클릭 시 상세 페이지로 이동
+
+요청사항만 실행한다.
+
+```
+
+### 6.4. 게시물 상세 페이지 실제 API 연동
+
+**프롬프트:**
+
+```
+게시물 상세 페이지를 실제 데이터베이스와 연동해 주세요.
+
+**현재 상황:**
+- 게시물 상세 페이지가 mockData 사용 중
+- slug 기반 게시물 조회 API 구현 완료
+- **2025년 새로운 Third-Party Auth 방식 사용**
+
+**구현 대상:**
+- 파일 경로: `app/posts/[slug]/page.tsx` (기존 파일 수정)
+- 파일 역할: 데이터베이스 기반 게시물 상세 페이지
+
+**주요 요구사항:**
+1. MOCK 데이터 제거
+   - mockData 관련 코드 완전 제거
+
+2. 실제 데이터베이스 연동
+   - slug로 게시물 조회
+   - **서버 컴포넌트이므로 createServerSupabaseClient 사용**
+   - 카테고리 정보 포함
+   - 존재하지 않는 게시물은 notFound() 처리
+
+3. **빌드 타임 vs 런타임 함수 구분 (중요!)**
+   - **generateStaticParams**: 공개 anon 클라이언트만 사용
+   - **generateMetadata**: 공개 anon 클라이언트만 사용  
+   - **페이지 컴포넌트**: createServerSupabaseClient 사용 가능
+
+**기술적 요구사항:**
+- **빌드 타임 함수 (generateStaticParams, generateMetadata):**
+  ```typescript
+  // ✅ 올바른 패턴: 공개 클라이언트만 사용
+  const { createClient } = await import('@supabase/supabase-js');
+  const supabase = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  );
+  ```
+- **런타임 함수 (페이지 컴포넌트):**
+  ```typescript
+  // ✅ 인증된 서버 클라이언트 사용 가능
+  const supabase = await createServerSupabaseClient();
+  const { userId } = await auth();
+  ```
+- **절대 금지**: generateStaticParams와 generateMetadata에서 auth() 또는 createServerSupabaseClient 사용
+
+**완료 기준:**
+- URL의 slug로 실제 게시물 조회
+- 커버 이미지 정상 표시
+- 404 페이지 정상 작동
+- **빌드 에러 없이 정상 컴파일**
+
+요청사항만 실행한다.
+
+```
+
+### 6.5. 카테고리 관련 페이지들 실제 API 연동
+
+**프롬프트:**
+
+```
+카테고리 관련 페이지들을 실제 데이터베이스와 연동해 주세요.
+
+**현재 상황:**
+- **2025년 새로운 Third-Party Auth 방식 사용**
+
+**구현 대상:**
+1. `app/categories/page.tsx` - 카테고리 목록
+2. `app/categories/[slug]/page.tsx` - 카테고리별 게시물
+
+**주요 요구사항:**
+1. 카테고리 목록 페이지
+   - MOCK 데이터 제거
+   - 실제 카테고리 목록 조회
+   - **서버 컴포넌트이므로 서버 클라이언트 사용**
+   - 각 카테고리의 게시물 개수 표시
+
+2. 카테고리별 게시물 페이지
+   - slug로 카테고리 조회
+   - **서버 컴포넌트이므로 서버 클라이언트 사용**
+   - 해당 카테고리의 게시물만 필터링
+   - **generateStaticParams에서는 공개 anon 클라이언트만 사용**
+
+**기술적 요구사항:**
+- **빌드 타임 함수 (generateStaticParams):**
+  ```typescript
+  // ✅ 올바른 패턴: 공개 클라이언트만 사용
+  const { createClient } = await import('@supabase/supabase-js');
+  const supabase = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  );
+  ```
+- **런타임 함수 (페이지 컴포넌트):**
+  ```typescript
+  // ✅ 인증된 서버 클라이언트 사용 가능
+  const supabase = await createServerSupabaseClient();
+  ```
+- **절대 금지**: generateStaticParams에서 auth() 또는 createServerSupabaseClient 사용
+
+**완료 기준:**
+- 실제 카테고리 데이터 표시
+- 카테고리별 게시물 필터링 정상 작동
+- 빈 카테고리 처리
+
+요청사항만 실행한다.
+
+```
+
+### 6.6. 전체 연동 최종 확인
+
+**프롬프트:**
+
+```
+모든 페이지가 실제 데이터베이스와 올바르게 연동되었는지 최종 확인해 주세요.
+
+**현재 상황:**
+- **2025년 새로운 Third-Party Auth 방식 사용**
+
+**확인 플로우:**
+1. 관리자 페이지에서 새 게시물 작성 (이미지 포함)
+2. 홈페이지에서 새 게시물 확인
+3. 게시물 목록에서 확인
+4. 게시물 상세 페이지 접근
+5. 카테고리 페이지에서 필터링 확인
+
+**체크리스트:**
+- [ ] MOCK 데이터 import가 완전히 제거되었는가?
+- [ ] 모든 페이지가 실제 데이터를 표시하는가?
+- [ ] 새로 작성한 게시물이 모든 페이지에 반영되는가?
+- [ ] 이미지 업로드가 정상 작동하는가?
+- [ ] 에러 없이 모든 기능이 작동하는가?
+
+**문제가 있다면:**
+- 구체적인 에러 메시지 확인
+- Supabase 대시보드에서 데이터 확인
+- 네트워크 탭에서 API 호출 확인
+
+요청사항만 실행한다.
+
+```
+
+# 7. 최종 검증: 10장 전체 기능 테스트
+
+### 7.1. 데이터베이스 연동 기능 검증
+
+1. **데이터 CRUD 테스트**
+    - Supabase 대시보드에서 직접 데이터 추가
+    - 웹사이트에서 데이터 표시 확인
+    - API를 통한 데이터 생성/수정/삭제 테스트
+2. **타입 안전성 검증**
+    - TypeScript 컴파일 오류 없음 확인
+    - 데이터베이스 스키마와 타입 일치 확인
+    - API 응답 타입 정확성 확인
+
+### 7.2. 이미지 업로드 시스템 검증
+
+1. **업로드 기능 테스트**
+    - 다양한 이미지 형식 업로드 테스트
+    - 파일 크기 제한 테스트
+    - 업로드 진행 상태 표시 확인
+2. **스토리지 연동 확인**
+    - Supabase Storage에 파일 저장 확인
+    - 공개 URL 생성 및 접근 확인
+    - RLS 정책 동작 확인
+
+### 7.3. 전체 시스템 통합 확인
+
+1. **8-9장 기능과의 통합**
+    - 기존 인증 시스템 정상 동작
+    - 댓글 시스템과 데이터베이스 연동
+    - 전체 사용자 플로우 일관성
+2. **성능 및 안정성**
+    - 페이지 로딩 속도 적절함
+    - 에러 처리 정상 동작
+    - 다양한 화면 크기에서 UI 정상 표시
+
+# 8. 진행 상황 저장 (GitHub 커밋)
+
+Vs-Code의 Source Control을 활용한다. 
+
+# 9. 마무리
+
+### 9.1. 10장에서 완성한 주요 기능
+
+- **Supabase 데이터베이스 연동**: PostgreSQL 기반의 안정적인 데이터 저장
+- **TypeScript 타입 안전성**: Database 타입을 통한 완전한 타입 체크
+- **이미지 업로드 시스템**: Supabase Storage를 활용한 파일 관리
+- **게시물 CRUD**: 생성, 조회, 수정, 삭제 기능 완성
+- **커버 이미지 지원**: 게시물에 이미지 첨부 및 표시
+
+### 9.2. 11장 준비사항
+
+다음 장에서 구현할 소셜 기능 및 배포를 위한 기반:
+
+- **완전한 데이터 영속성**: 모든 사용자 데이터가 안전하게 저장됨
+- **확장 가능한 API 구조**: RESTful 패턴의 견고한 API 기반
+- **이미지 관리 시스템**: 사용자 생성 콘텐츠를 위한 완전한 파일 관리
+- **타입 안전성**: 향후 기능 추가 시에도 안전한 개발 환경
+
+10장을 통해 블로그가 목업 데이터 기반의 프로토타입에서 실제 데이터베이스를 활용하는 완전한 웹 애플리케이션으로 발전했다. 사용자들은 이제 실제로 게시물을 저장하고, 이미지를 업로드하며, 모든 데이터가 영구적으로 보존되는 진정한 블로그 시스템을 사용할 수 있다.
+
+## 참고 자료
+
+- Supabase 공식 문서: https://supabase.com/docs
+- Next.js App Router 가이드: https://nextjs.org/docs/app
+- TypeScript 핸드북: https://www.typescriptlang.org/docs
+- PostgreSQL 문서: https://www.postgresql.org/docs
+
+## 🚨 중요: 빌드 에러 방지 가이드
+
+### Next.js 빌드 타임 vs 런타임 함수 구분
+
+**2025년 새로운 Third-Party Auth 방식에서 주의사항**
+
+#### 빌드 타임 함수들 (Clerk auth() 사용 금지)
+```typescript
+// ❌ 빌드 에러 발생하는 잘못된 패턴
+export async function generateStaticParams() {
+  const { auth } = await import('@clerk/nextjs/server'); // 빌드 에러!
+  const { userId } = await auth(); // request context 없음
+}
+
+export async function generateMetadata() {
+  const { auth } = await import('@clerk/nextjs/server'); // 빌드 에러!
+  const supabase = await createServerSupabaseClient(); // 내부적으로 auth() 호출
+}
+```
+
+#### 올바른 빌드 타임 패턴
+```typescript
+// ✅ 빌드 타임: 공개 anon 클라이언트만 사용
+export async function generateStaticParams() {
+  const { createClient } = await import('@supabase/supabase-js');
+  const supabase = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  );
+  
+  // 공개 데이터만 조회 (인증 없음)
+  const { data: posts } = await supabase
+    .from('posts')
+    .select('slug')
+    .eq('status', 'published');
+    
+  return posts.map(post => ({ slug: post.slug }));
+}
+
+export async function generateMetadata({ params }) {
+  // 동일한 패턴: 공개 클라이언트만 사용
+  const { createClient } = await import('@supabase/supabase-js');
+  const supabase = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  );
+}
+```
+
+#### 런타임 함수들 (Clerk auth() 사용 가능)
+```typescript
+// ✅ 런타임: 인증된 서버 클라이언트 사용 가능
+export default async function Page({ params }) {
+  const { userId } = await auth(); // 런타임에서는 가능
+  const supabase = await createServerSupabaseClient(); // 내부적으로 auth() 사용
+  
+  // 인증된 사용자 기반 데이터 조회
+  const { data } = await supabase.from('posts').select('*');
+}
+
+// API 라우트에서도 가능
 export async function GET() {
-  const response = NextResponse.json(data);
-  response.headers.set('Access-Control-Allow-Origin', '*');
-  return response;
+  const { userId } = await auth(); // 가능
+  const supabase = await createServerSupabaseClient(); // 가능
 }
-
 ```
 
-1. 외부 API 호출 시 프록시 사용:
-    - 클라이언트에서 직접 호출 대신 API 라우트 경유
+### Supabase 클라이언트 사용 패턴 정리
 
-### 모니터링 및 디버깅 도구
+| 컨텍스트 | 사용할 클라이언트 | auth() 사용 | 용도 |
+|---------|-----------------|------------|-----|
+| 빌드 타임 함수 | 공개 anon 클라이언트 | ❌ 금지 | 정적 페이지 생성 |
+| 런타임 서버 | createServerSupabaseClient | ✅ 가능 | 인증된 서버 로직 |
+| 클라이언트 컴포넌트 | useSupabaseClient | N/A | 브라우저 인증 |
 
-### Vercel Analytics 활용
+### 체크리스트: 빌드 에러 방지
 
-- Real-time analytics 확인
-- 페이지별 성능 지표 모니터링
-- Core Web Vitals 점수 추적
+**빌드 전 반드시 확인:**
+- [ ] generateStaticParams에서 auth() 사용하지 않았는가?
+- [ ] generateMetadata에서 createServerSupabaseClient 사용하지 않았는가?
+- [ ] 빌드 타임 함수에서는 공개 anon 클라이언트만 사용했는가?
+- [ ] 런타임 함수에서만 인증 로직을 사용했는가?
 
-### 브라우저 개발자 도구 활용
+**에러 발생 시 해결 방법:**
+1. 빌드 타임 함수에서 auth() 제거
+2. 공개 anon 클라이언트로 교체
+3. 인증이 필요한 로직은 런타임 함수로 이동
 
-1. **Console 탭**: 자바스크립트 에러 확인
-2. **Network 탭**: API 호출 상태 및 응답 시간 확인
-3. **Application 탭**: localStorage, sessionStorage 상태 확인
-4. **Lighthouse**: 성능, 접근성, SEO 점수 측정
+## 📝 표준 프롬프트 템플릿 (AI 실수 방지용)
 
-### 로그 모니터링
+### Next.js + Supabase 연동 프롬프트 작성 시 필수 포함 사항
 
-```jsx
-// 프로덕션 환경에서도 중요한 로그는 유지
-console.log('Production log:', { userId, action, timestamp });
+**모든 페이지 구현 프롬프트에 반드시 포함할 내용:**
+
+```markdown
+**⚠️ 빌드 타임 vs 런타임 함수 구분 (필수):**
+
+**빌드 타임 함수들 (auth() 사용 절대 금지):**
+- generateStaticParams
+- generateMetadata
+
+**기술적 요구사항:**
+- **빌드 타임 함수:**
+  ```typescript
+  // ✅ 반드시 이 패턴 사용
+  const { createClient } = await import('@supabase/supabase-js');
+  const supabase = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  );
+  ```
+
+- **런타임 함수 (페이지 컴포넌트, API 라우트):**
+  ```typescript  
+  // ✅ 인증 필요한 경우만 사용
+  const supabase = await createServerSupabaseClient();
+  const { userId } = await auth();
+  ```
+
+- **절대 금지사항:**
+  - generateStaticParams에서 auth() 사용
+  - generateMetadata에서 createServerSupabaseClient 사용
+  - 빌드 타임 함수에서 인증 관련 로직 사용
+
+**완료 기준에 반드시 포함:**
+- [ ] 빌드 에러 없이 정상 컴파일
+- [ ] generateStaticParams에서 공개 클라이언트만 사용
+- [ ] 런타임에서만 인증 로직 사용
 ```
 
-### 지속적인 모니터링 체크리스트
+### 프롬프트 검토 체크리스트
 
-### 주간 점검사항
+**프롬프트 작성 후 반드시 확인:**
+- [ ] 빌드 타임 함수에 auth() 사용 지시하지 않았는가?
+- [ ] generateStaticParams/generateMetadata에 createServerSupabaseClient 사용 지시하지 않았는가?
+- [ ] 빌드 타임과 런타임 구분이 명확한가?
+- [ ] 올바른 Supabase 클라이언트 패턴을 제시했는가?
+- [ ] "빌드 에러 없이 컴파일" 조건이 완료 기준에 포함되었는가?
 
-- [ ]  사이트 접근성 및 로딩 속도 확인
-- [ ]  새로운 게시물 작성 및 표시 테스트
-- [ ]  댓글 및 좋아요 기능 동작 확인
-- [ ]  검색 기능 정확성 확인
-
-### 월간 점검사항
-
-- [ ]  Vercel Analytics 성능 지표 검토
-- [ ]  Supabase 사용량 및 제한 확인
-- [ ]  Clerk 사용자 통계 검토
-- [ ]  백업 및 보안 상태 점검
-
-성공적인 배포 검증이 완료되면 안정적으로 운영되는 블로그 시스템을 확보하게 된다.
-
-### 간단한 확인: 배포 완료
-
-배포된 사이트에서 다음 2가지만 확인한다:
-
-1. **핵심 기능 확인**
-    - 게시물 목록과 상세 페이지가 정상적으로 로드되는가?
-    - 로그인 후 댓글 작성과 좋아요 기능이 동작하는가?
-2. **성능 확인**
-    - 페이지 로딩 속도가 적절한가?
-    - 이미지들이 제대로 표시되는가?
+이 템플릿을 사용하면 AI가 실수할 확률을 크게 줄일 수 있습니다.

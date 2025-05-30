@@ -7,7 +7,7 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import { Menu, Search, X, PlusCircle } from 'lucide-react';
+import { Menu, X, PlusCircle } from 'lucide-react';
 import { SignedIn, SignedOut, SignInButton, UserButton } from '@clerk/nextjs';
 import { Button } from '@/components/ui/button';
 import {
@@ -18,14 +18,7 @@ import {
   SheetTitle,
   SheetTrigger,
 } from '@/components/ui/sheet';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
 import { useCurrentPath } from '@/hooks/use-pathname';
-import SearchDialog, { useSearchDialog } from '@/components/search/search-dialog';
 
 // 네비게이션 메뉴 항목 타입 정의
 interface NavItem {
@@ -39,22 +32,12 @@ const navItems: NavItem[] = [
   { name: '홈', href: '/', description: '메인 페이지로 이동' },
   { name: '블로그', href: '/posts', description: '블로그 글 목록 보기' },
   { name: '카테고리', href: '/categories', description: '카테고리별 글 보기' },
-  { name: '검색', href: '/search', description: '포스트 검색하기' },
   { name: '소개', href: '/about', description: '블로그 소개 보기' },
-  // 개발 환경에서만 테스트 페이지 표시
-  ...(process.env.NODE_ENV === 'development' ? [
-    { name: 'Supabase 테스트', href: '/test-supabase', description: 'Third-Party Auth 통합 테스트' },
-    { name: '업로드 테스트', href: '/test-upload', description: '이미지 업로드 및 Storage 정책 테스트' },
-    { name: 'API 테스트', href: '/test-api', description: 'CRUD API 테스트' },
-  ] : []),
 ];
 
 export default function Header() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const { isActivePath } = useCurrentPath();
-  
-  // 검색 다이얼로그 상태 관리
-  const { open, onOpenChange, openSearch } = useSearchDialog();
 
   /**
    * 모바일 메뉴 닫기 핸들러
@@ -151,33 +134,6 @@ export default function Header() {
                 </Button>
               </SignInButton>
             </SignedOut>
-
-            {/* 검색 드롭다운 */}
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-9 w-9 p-0"
-                  aria-label="검색 옵션"
-                  title="검색 옵션"
-                >
-                  <Search className="h-4 w-4" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-48">
-                <DropdownMenuItem onClick={openSearch} className="cursor-pointer">
-                  <Search className="mr-2 h-4 w-4" />
-                  빠른 검색 (Ctrl+K)
-                </DropdownMenuItem>
-                <DropdownMenuItem asChild>
-                  <Link href="/search" className="cursor-pointer">
-                    <Search className="mr-2 h-4 w-4" />
-                    검색 페이지
-                  </Link>
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
 
             {/* 모바일 햄버거 메뉴 */}
             <div className="md:hidden">
@@ -291,46 +247,12 @@ export default function Header() {
                       </div>
                     </SignedOut>
                   </div>
-
-                  {/* 모바일 검색 옵션 */}
-                  <div className="mt-4 pt-6 border-t space-y-2">
-                    <h4 className="text-sm font-medium text-muted-foreground mb-3">검색</h4>
-                    <Button
-                      variant="outline"
-                      className="w-full justify-start"
-                      onClick={() => {
-                        closeMobileMenu();
-                        openSearch();
-                      }}
-                      aria-label="빠른 검색"
-                    >
-                      <Search className="h-4 w-4 mr-2" />
-                      빠른 검색 (Ctrl+K)
-                    </Button>
-                    <Button
-                      variant="outline"
-                      className="w-full justify-start"
-                      asChild
-                    >
-                      <Link
-                        href="/search"
-                        onClick={closeMobileMenu}
-                        aria-label="검색 페이지"
-                      >
-                        <Search className="h-4 w-4 mr-2" />
-                        검색 페이지
-                      </Link>
-                    </Button>
-                  </div>
                 </SheetContent>
               </Sheet>
             </div>
           </div>
         </div>
       </header>
-
-      {/* 검색 다이얼로그 */}
-      <SearchDialog open={open} onOpenChange={onOpenChange} />
     </>
   );
 } 

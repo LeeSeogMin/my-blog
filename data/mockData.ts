@@ -546,8 +546,7 @@ export function getPaginatedPosts(
   page: number = 1,
   limit: number = 10,
   categorySlug?: string,
-  sortBy: 'latest' | 'popular' | 'views' = 'latest',
-  searchQuery?: string
+  sortBy: 'latest' | 'popular' | 'views' = 'latest'
 ): {
   data: BlogPost[];
   pagination: {
@@ -563,16 +562,6 @@ export function getPaginatedPosts(
   // 카테고리 필터링
   if (categorySlug && categorySlug !== 'all') {
     filteredPosts = filteredPosts.filter(post => post.category.slug === categorySlug);
-  }
-  
-  // 검색 필터링
-  if (searchQuery && searchQuery.trim()) {
-    const query = searchQuery.toLowerCase();
-    filteredPosts = filteredPosts.filter(post =>
-      post.title.toLowerCase().includes(query) ||
-      post.excerpt.toLowerCase().includes(query) ||
-      post.tags.some(tag => tag.toLowerCase().includes(query))
-    );
   }
   
   // 정렬

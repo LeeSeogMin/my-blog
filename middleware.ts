@@ -23,8 +23,6 @@ export default clerkMiddleware(async (auth, request) => {
     '/',
     '/sign-in',
     '/sign-up',
-    '/test-api',
-    '/test-supabase',
   ]
 
   // 공개 API 경로들 (GET 요청만)
@@ -40,8 +38,7 @@ export default clerkMiddleware(async (auth, request) => {
 
   // 블로그 콘텐츠 페이지 (공개)
   if (pathname.startsWith('/posts/') || 
-      pathname.startsWith('/categories/') ||
-      pathname.startsWith('/search')) {
+      pathname.startsWith('/categories/')) {
     return NextResponse.next()
   }
 
