@@ -227,22 +227,19 @@ export function PostCard({
             )}
 
             {/* 오른쪽: 통계 정보 및 좋아요 버튼 */}
-            <div className="flex items-center gap-3">
-              {/* 통계 정보 (조회수만) */}
+            <div className="flex items-center gap-3">              {/* 통계 정보 (조회수만) */}
               {showStats && (
                 <div className="flex items-center gap-3 text-xs text-muted-foreground">
                   <span className="flex items-center gap-1">
                     <span>👀</span>
-                    {(post.viewCount || post.views || 0).toLocaleString()}
+                    {(post.viewCount || 0).toLocaleString()}
                   </span>
                 </div>
-              )}
-
-              {/* 좋아요 버튼 */}
+              )}{/* 좋아요 버튼 */}
               {showLikeButton && (
                 <div onClick={(e) => e.stopPropagation()}>
                   <LikeButton
-                    postId={post.slug}
+                    postId={post.id}
                     initialLikes={post.likeCount}
                     size="sm"
                     showCount={true}

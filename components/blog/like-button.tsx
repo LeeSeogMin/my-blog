@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Heart } from 'lucide-react';
+import { useUser, SignInButton } from '@clerk/nextjs';
 
 interface LikeButtonProps {
   postId: string;
@@ -13,8 +14,8 @@ interface LikeButtonProps {
 }
 
 /**
- * 블로그 포스트 좋아요 버튼 컴포넌트
- * 로컬 스토리지를 이용한 사용자별 좋아요 상태 관리와 애니메이션 효과를 제공합니다.
+ * 블로그 포스트 좋아요 버튼 컴포넌트 (데이터베이스 연동)
+ * Supabase 데이터베이스와 Clerk 인증을 활용한 좋아요 기능을 제공합니다.
  */
 export default function LikeButton({ 
   postId, 
@@ -23,133 +24,85 @@ export default function LikeButton({
   showCount = true,
   className = ''
 }: LikeButtonProps) {
+  const { user, isSignedIn } = useUser();
   const [isLiked, setIsLiked] = useState(false);
   const [likeCount, setLikeCount] = useState(initialLikes);
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const [isAnimating, setIsAnimating] = useState(false);
 
   /**
-   * 브라우저별 고유 사용자 ID 생성/조회
-   * @returns 사용자 고유 ID
+   * 서버에서 좋아요 상태 조회
    */
-  const getUserId = useCallback((): string => {
-    const storageKey = 'blog-user-id';
-    let userId = localStorage.getItem(storageKey);
-    
-    if (!userId) {
-      userId = `user-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-      localStorage.setItem(storageKey, userId);
-    }
-    
-    return userId;
-  }, []);
-
-  /**
-   * 사용자의 좋아요 상태 조회
-   * @param postId 포스트 ID
-   * @returns 좋아요 상태
-   */
-  const getUserLikeStatus = useCallback((postId: string): boolean => {
+  const fetchLikeStatus = useCallback(async () => {
     try {
-      const userId = getUserId();
-      const storageKey = `blog-likes-${postId}`;
-      const likesData = localStorage.getItem(storageKey);
+      setIsLoading(true);
+      console.log('=== 좋아요 상태 조회 ===', postId);
+
+      const response = await fetch(`/api/likes?postId=${postId}`);
       
-      if (likesData) {
-        const likes = JSON.parse(likesData);
-        return likes[userId] || false;
+      if (!response.ok) {
+        throw new Error(`좋아요 상태 조회 실패: ${response.status}`);
       }
-      
-      return false;
+
+      const data = await response.json();
+      console.log('✅ 좋아요 상태 조회 완료:', data);
+
+      setIsLiked(data.liked || false);
+      setLikeCount(data.totalLikes || 0);
     } catch (error) {
       console.error('좋아요 상태 조회 중 오류:', error);
-      return false;
+      // 오류 시 기본값 유지
+      setIsLiked(false);
+      setLikeCount(initialLikes);
+    } finally {
+      setIsLoading(false);
     }
-  }, [getUserId]);
+  }, [postId, initialLikes]);
 
   /**
-   * 사용자의 좋아요 상태 저장
-   * @param postId 포스트 ID
-   * @param liked 좋아요 상태
-   */
-  const setUserLikeStatus = useCallback((postId: string, liked: boolean): void => {
-    try {
-      const userId = getUserId();
-      const storageKey = `blog-likes-${postId}`;
-      const likesData = localStorage.getItem(storageKey);
-      
-      let likes = {};
-      if (likesData) {
-        likes = JSON.parse(likesData);
-      }
-      
-      if (liked) {
-        likes[userId] = true;
-      } else {
-        delete likes[userId];
-      }
-      
-      localStorage.setItem(storageKey, JSON.stringify(likes));
-    } catch (error) {
-      console.error('좋아요 상태 저장 중 오류:', error);
-    }
-  }, [getUserId]);
-
-  /**
-   * 전체 좋아요 수 조회
-   * @param postId 포스트 ID
-   * @returns 좋아요 수
-   */
-  const getTotalLikes = useCallback((postId: string): number => {
-    try {
-      const storageKey = `blog-like-counts-${postId}`;
-      const countData = localStorage.getItem(storageKey);
-      
-      if (countData) {
-        return parseInt(countData, 10);
-      }
-      
-      return initialLikes;
-    } catch (error) {
-      console.error('좋아요 수 조회 중 오류:', error);
-      return initialLikes;
-    }
-  }, [initialLikes]);
-
-  /**
-   * 전체 좋아요 수 저장
-   * @param postId 포스트 ID
-   * @param count 좋아요 수
-   */
-  const setTotalLikes = useCallback((postId: string, count: number): void => {
-    try {
-      const storageKey = `blog-like-counts-${postId}`;
-      localStorage.setItem(storageKey, count.toString());
-    } catch (error) {
-      console.error('좋아요 수 저장 중 오류:', error);
-    }
-  }, []);
-
-  /**
-   * 좋아요 토글 처리
+   * 좋아요 토글 처리 (데이터베이스 연동)
    */
   const handleLikeToggle = async (): Promise<void> => {
     if (isLoading) return; // 중복 클릭 방지
 
+    if (!isSignedIn) {
+      console.log('미인증 사용자 - 로그인 필요');
+      return;
+    }
+
     setIsLoading(true);
     setIsAnimating(true);
 
+    // 낙관적 업데이트 (UI 즉시 변경)
+    const previousLiked = isLiked;
+    const previousCount = likeCount;
+    const newLikedState = !isLiked;
+    const newLikeCount = newLikedState ? likeCount + 1 : likeCount - 1;
+
+    setIsLiked(newLikedState);
+    setLikeCount(newLikeCount);
+
     try {
-      const newLikedState = !isLiked;
-      const newLikeCount = newLikedState ? likeCount + 1 : likeCount - 1;
+      console.log('=== 좋아요 토글 ===', { postId, newLikedState });
 
-      // 낙관적 업데이트 (UI 즉시 변경)
-      setIsLiked(newLikedState);
-      setLikeCount(newLikeCount);
+      const response = await fetch('/api/likes', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ postId }),
+      });
 
-      // 로컬 스토리지에 저장
-      setUserLikeStatus(postId, newLikedState);
-      setTotalLikes(postId, newLikeCount);
+      if (!response.ok) {
+        throw new Error(`좋아요 토글 실패: ${response.status}`);
+      }
+
+      const data = await response.json();
+      console.log('✅ 좋아요 토글 완료:', data);
+
+      // 서버에서 받은 실제 데이터로 상태 업데이트
+      setIsLiked(data.liked);
+      setLikeCount(data.totalLikes);
 
       // 애니메이션 효과를 위한 지연
       setTimeout(() => {
@@ -160,13 +113,13 @@ export default function LikeButton({
       console.error('좋아요 처리 중 오류:', error);
       
       // 오류 발생 시 상태 롤백
-      setIsLiked(!isLiked);
-      setLikeCount(likeCount);
+      setIsLiked(previousLiked);
+      setLikeCount(previousCount);
+      setIsAnimating(false);
     } finally {
       setIsLoading(false);
     }
   };
-
   /**
    * 키보드 이벤트 처리
    * @param event 키보드 이벤트
@@ -206,15 +159,40 @@ export default function LikeButton({
 
   const sizeStyles = getSizeStyles();
 
-  // 컴포넌트 마운트 시 초기 데이터 로드
+  // 컴포넌트 마운트 시 서버에서 좋아요 상태 조회
   useEffect(() => {
-    const userLiked = getUserLikeStatus(postId);
-    const totalLikes = getTotalLikes(postId);
-    
-    setIsLiked(userLiked);
-    setLikeCount(totalLikes);
-  }, [postId, getUserLikeStatus, getTotalLikes]);
+    fetchLikeStatus();
+  }, [fetchLikeStatus]);
 
+  // 미인증 사용자를 위한 렌더링
+  if (!isSignedIn) {
+    return (
+      <div className={`flex items-center ${sizeStyles.gap} ${className}`}>
+        <SignInButton mode="modal">
+          <Button
+            variant="outline"
+            size="sm"
+            className={`
+              ${sizeStyles.button} 
+              ${sizeStyles.gap}
+              hover:bg-red-50 hover:text-red-600 hover:border-red-300
+              transition-all duration-200 ease-in-out
+            `}
+          >
+            <Heart className={`${sizeStyles.icon} fill-none`} />
+            {showCount && likeCount > 0 && (
+              <span className="font-medium select-none">
+                {likeCount}
+              </span>
+            )}
+          </Button>
+        </SignInButton>
+        <span className="text-xs text-muted-foreground ml-1">
+          로그인하여 좋아요
+        </span>
+      </div>
+    );
+  }
   return (
     <Button
       variant={isLiked ? 'default' : 'outline'}
@@ -244,23 +222,26 @@ export default function LikeButton({
           ${sizeStyles.icon}
           ${isLiked ? 'fill-current' : 'fill-none'}
           ${isAnimating ? 'animate-pulse' : ''}
+          ${isLoading ? 'animate-spin' : ''}
           transition-all duration-200
         `}
       />
       
       {showCount && (
         <span className="font-medium select-none">
-          {likeCount > 0 ? likeCount : ''}
+          {isLoading ? '...' : (likeCount > 0 ? likeCount : '')}
         </span>
       )}
       
       {/* 스크린 리더를 위한 추가 정보 */}
       <span className="sr-only">
-        {isLiked 
-          ? `좋아요를 눌렀습니다. 현재 총 ${likeCount}개의 좋아요가 있습니다.`
-          : `좋아요를 누르세요. 현재 총 ${likeCount}개의 좋아요가 있습니다.`
+        {isLoading 
+          ? '좋아요를 처리 중입니다...'
+          : isLiked 
+            ? `좋아요를 눌렀습니다. 현재 총 ${likeCount}개의 좋아요가 있습니다.`
+            : `좋아요를 누르세요. 현재 총 ${likeCount}개의 좋아요가 있습니다.`
         }
       </span>
     </Button>
   );
-} 
+}

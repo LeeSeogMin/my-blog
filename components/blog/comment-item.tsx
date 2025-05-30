@@ -5,15 +5,22 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { CalendarDays, Heart, MessageSquare, Flag, Pencil, Trash2 } from 'lucide-react';
-import type { Comment } from '@/types/comment';
+import { Database } from '@/types/database.types';
+import CommentEditForm from './comment-edit-form';
+
+// 데이터베이스 기반 댓글 타입 정의
+type Comment = Database['public']['Tables']['comments']['Row'];
 
 interface CommentItemProps {
   comment: Comment;
+  isEditing?: boolean;
   onReply?: (commentId: string) => void;
   onLike?: (commentId: string) => void;
   onReport?: (commentId: string) => void;
   onEdit?: (commentId: string) => void;
   onDelete?: (commentId: string) => void;
+  onUpdate?: (updatedComment: Comment) => void;
+  onEditCancel?: () => void;
 }
 
 /**
@@ -22,14 +29,17 @@ interface CommentItemProps {
  */
 export default function CommentItem({ 
   comment, 
+  isEditing = false,
   onReply, 
   onLike, 
   onReport,
   onEdit,
-  onDelete 
+  onDelete,
+  onUpdate,
+  onEditCancel 
 }: CommentItemProps) {
   const { user } = useUser();
-  const isAuthor = user?.id === comment.userId;
+  const isAuthor = user?.id === comment.user_id;
   
   /**
    * 이니셜 생성 함수 (한글/영문 모두 지원)
@@ -124,31 +134,46 @@ export default function CommentItem({
       </span>
     ));
   };
+  /**
+   * 편집 시작 핸들러
+   */
+  const handleEdit = () => {
+    onEdit?.(comment.id);
+  };
+
+  /**
+   * 편집 취소 핸들러
+   */
+  const handleEditCancel = () => {
+    onEditCancel?.();
+  };
+
+  /**
+   * 편집 저장 핸들러
+   */
+  const handleEditSave = (updatedComment: Comment) => {
+    onUpdate?.(updatedComment);
+  };
 
   return (
     <div className="group border-b border-gray-100 pb-6 last:border-b-0 transition-all duration-200 hover:bg-gray-50/50 p-4 rounded-lg">
-      <div className="flex gap-4">
-        {/* 아바타 */}
+      <div className="flex gap-4">        {/* 아바타 */}
         <div className="shrink-0">
           <Avatar className="w-10 h-10">
-            {comment.authorImageUrl ? (
-              <AvatarImage src={comment.authorImageUrl} alt={comment.authorName} />
-            ) : (
-              <AvatarFallback 
-                className={`${getAvatarColor(comment.authorName)} text-sm font-semibold`}
-              >
-                {getInitials(comment.authorName)}
-              </AvatarFallback>
-            )}
+            {/* Database에는 아바타 이미지 URL이 없으므로 이니셜만 표시 */}
+            <AvatarFallback 
+              className={`${getAvatarColor(comment.user_name || '익명')} text-sm font-semibold`}
+            >
+              {getInitials(comment.user_name || '익명')}
+            </AvatarFallback>
           </Avatar>
         </div>
 
         {/* 댓글 콘텐츠 */}
-        <div className="flex-1 min-w-0">
-          {/* 작성자 정보 헤더 */}
+        <div className="flex-1 min-w-0">          {/* 작성자 정보 헤더 */}
           <div className="flex items-center flex-wrap gap-2 mb-2">
             <span className="font-semibold text-gray-900">
-              {comment.authorName}
+              {comment.user_name || '익명'}
             </span>
             
             {/* 배지들 */}
@@ -157,29 +182,26 @@ export default function CommentItem({
                 내 댓글
               </span>
             )}
-            {comment.isPinned && (
-              <span className="px-2 py-0.5 bg-yellow-100 text-yellow-700 text-xs rounded-full font-medium">
-                📌 고정
-              </span>
-            )}
             
             {/* 작성 시간 */}
             <span className="text-gray-500 text-sm flex items-center gap-1">
               <CalendarDays className="w-3 h-3" />
-              {formatRelativeTime(comment.createdAt)}
-              {comment.isEdited && (
-                <span className="text-xs text-gray-400 ml-1">(수정됨)</span>
-              )}
+              {formatRelativeTime(new Date(comment.created_at))}
             </span>
-          </div>
-
-          {/* 댓글 내용 */}
-          <div className="text-gray-700 leading-relaxed mb-3 whitespace-pre-wrap">
-            {renderContent(comment.content)}
-          </div>
-
-          {/* 액션 버튼들 */}
-          <div className="flex items-center gap-4">
+          </div>          {/* 댓글 내용 또는 편집 폼 */}
+          {isEditing ? (
+            <CommentEditForm
+              comment={comment}
+              onSave={handleEditSave}
+              onCancel={handleEditCancel}
+            />
+          ) : (
+            <div className="text-gray-700 leading-relaxed mb-3 whitespace-pre-wrap">
+              {renderContent(comment.content)}
+            </div>
+          )}          {/* 액션 버튼들 (편집 모드가 아닐 때만 표시) */}
+          {!isEditing && (
+            <div className="flex items-center gap-4">
             {/* 좋아요 버튼 */}
             <Button
               variant="ghost"
@@ -188,9 +210,7 @@ export default function CommentItem({
               onClick={() => onLike?.(comment.id)}
             >
               <Heart className="w-4 h-4 mr-1" />
-              <span className="text-xs">
-                {comment.likeCount > 0 ? `좋아요 ${comment.likeCount}` : '좋아요'}
-              </span>
+              <span className="text-xs">좋아요</span>
             </Button>
 
             {/* 답글 버튼 */}
@@ -206,13 +226,12 @@ export default function CommentItem({
 
             {/* 작성자일 경우 편집/삭제 버튼 */}
             {isAuthor ? (
-              <>
-                {/* 수정 버튼 */}
+              <>                {/* 수정 버튼 */}
                 <Button
                   variant="ghost"
                   size="sm"
                   className="h-auto p-1 text-gray-500 hover:text-blue-500 hover:bg-blue-50 transition-colors"
-                  onClick={() => onEdit?.(comment.id)}
+                  onClick={handleEdit}
                 >
                   <Pencil className="w-4 h-4 mr-1" />
                   <span className="text-xs">수정</span>
@@ -257,21 +276,9 @@ export default function CommentItem({
                 className="h-auto p-1 text-gray-500 hover:text-orange-500 hover:bg-orange-50 transition-colors opacity-0 group-hover:opacity-100"
                 onClick={() => onReport?.(comment.id)}
               >
-                <Flag className="w-4 h-4 mr-1" />
-                <span className="text-xs">신고</span>
+                <Flag className="w-4 h-4 mr-1" />                <span className="text-xs">신고</span>
               </Button>
             )}
-          </div>
-
-          {/* 통계 정보 (관리자용) */}
-          {(comment.reportCount > 0 || comment.dislikeCount > 0) && (
-            <div className="mt-2 flex items-center gap-3 text-xs text-gray-400">
-              {comment.dislikeCount > 0 && (
-                <span>싫어요 {comment.dislikeCount}</span>
-              )}
-              {comment.reportCount > 0 && (
-                <span className="text-orange-500">신고 {comment.reportCount}</span>
-              )}
             </div>
           )}
         </div>

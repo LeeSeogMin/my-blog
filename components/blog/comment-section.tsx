@@ -7,8 +7,26 @@ import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { MessageCircle } from 'lucide-react';
 import { SignedIn, SignedOut, SignInButton, useUser } from '@clerk/nextjs';
-import type { Comment, CommentFormData } from '@/types/comment';
+import { Database } from '@/types/database.types';
 import CommentItem from './comment-item';
+
+// 데이터베이스 기반 댓글 타입 정의
+type Comment = Database['public']['Tables']['comments']['Row'];
+
+// API 응답을 프론트엔드 타입으로 변환하는 함수
+const convertCommentFromApi = (apiComment: any): Comment => {
+  return {
+    id: apiComment.id,
+    content: apiComment.content,
+    user_id: apiComment.user_id,
+    user_name: apiComment.user_name,
+    user_email: apiComment.user_email,
+    post_id: apiComment.post_id,
+    parent_id: apiComment.parent_id,
+    created_at: apiComment.created_at,
+    updated_at: apiComment.updated_at,
+  };
+};
 
 interface CommentSectionProps {
   postId: string;
@@ -22,6 +40,11 @@ interface CommentFormProps {
 
 interface CommentListProps {
   comments: Comment[];
+  editingCommentId: string | null;
+  onCommentUpdated: (updatedComment: Comment) => void;
+  onCommentDeleted: (commentId: string) => void;
+  onEditStart: (commentId: string) => void;
+  onEditCancel: () => void;
 }
 
 /**
@@ -29,13 +52,7 @@ interface CommentListProps {
  */
 function CommentForm({ postId, onCommentAdded }: CommentFormProps) {
   const { user } = useUser();
-  const [formData, setFormData] = useState<CommentFormData>({
-    content: '',
-    agreeToTerms: true,
-    authorName: user?.fullName || '',
-    authorEmail: user?.primaryEmailAddress?.emailAddress || '',
-    authorImageUrl: user?.imageUrl
-  });
+  const [content, setContent] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
@@ -43,18 +60,17 @@ function CommentForm({ postId, onCommentAdded }: CommentFormProps) {
   const validateForm = (): boolean => {
     const newErrors: Record<string, string> = {};
 
-    if (!formData.content.trim()) {
+    if (!content.trim()) {
       newErrors.content = '댓글 내용을 입력해주세요.';
-    } else if (formData.content.trim().length < 5) {
+    } else if (content.trim().length < 5) {
       newErrors.content = '댓글은 5글자 이상 입력해주세요.';
-    } else if (formData.content.trim().length > 1000) {
+    } else if (content.trim().length > 1000) {
       newErrors.content = '댓글은 1000글자 이하로 입력해주세요.';
     }
 
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
-
   // 폼 제출 처리
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -63,56 +79,47 @@ function CommentForm({ postId, onCommentAdded }: CommentFormProps) {
       return;
     }
 
+    if (!user?.id) {
+      setErrors({ submit: '로그인이 필요합니다.' });
+      return;
+    }
+
     setIsSubmitting(true);
 
     try {
-      // 새 댓글 생성
-      const newComment: Comment = {
-        id: `comment-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-        postId,
-        authorName: user?.fullName || '익명',
-        authorEmail: user?.primaryEmailAddress?.emailAddress || '',
-        authorImageUrl: user?.imageUrl,
-        content: formData.content.trim(),
-        createdAt: new Date(),
-        status: 'approved',
-        likeCount: 0,
-        dislikeCount: 0,
-        reportCount: 0,
-        isEdited: false,
-        isPinned: false,
-        isAuthor: false,
-        userId: user?.id
-      };
-
-      // 부모 컴포넌트에 새 댓글 전달
-      onCommentAdded(newComment);
-
-      // 폼 초기화
-      setFormData({
-        content: '',
-        agreeToTerms: true,
-        authorName: user?.fullName || '',
-        authorEmail: user?.primaryEmailAddress?.emailAddress || '',
-        authorImageUrl: user?.imageUrl
+      // API를 통해 댓글 작성
+      const response = await fetch('/api/comments', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          postId,
+          content: content.trim(),
+        }),
       });
 
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || '댓글 작성에 실패했습니다.');
+      }      const { comment } = await response.json();
+      
+      // API 응답을 프론트엔드 타입으로 변환
+      const convertedComment = convertCommentFromApi(comment);
+      
+      // 폼 초기화
+      setContent('');
       setErrors({});
+      
+      // 부모 컴포넌트에 새 댓글 전달
+      onCommentAdded(convertedComment);
+      
     } catch (error) {
-      console.error('댓글 작성 중 오류:', error);
-      setErrors({ submit: '댓글 작성 중 오류가 발생했습니다.' });
-    } finally {
+      console.error('댓글 작성 오류:', error);
+      setErrors({ 
+        submit: error instanceof Error ? error.message : '댓글 작성 중 오류가 발생했습니다.' 
+      });    } finally {
       setIsSubmitting(false);
-    }
-  };
-
-  // 입력값 변경 처리
-  const handleInputChange = (field: keyof CommentFormData, value: string | boolean) => {
-    setFormData(prev => ({ ...prev, [field]: value }));
-    
-    // 에러 메시지 클리어
-    if (errors[field]) {
-      setErrors(prev => ({ ...prev, [field]: '' }));
     }
   };
 
@@ -126,7 +133,7 @@ function CommentForm({ postId, onCommentAdded }: CommentFormProps) {
       </CardHeader>
       <CardContent>
         {user && (
-        <form onSubmit={handleSubmit} className="space-y-4">
+          <form onSubmit={handleSubmit} className="space-y-4">
           {/* 현재 로그인한 사용자 정보 표시 */}
           <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
             <img
@@ -149,8 +156,8 @@ function CommentForm({ postId, onCommentAdded }: CommentFormProps) {
               id="content"
               placeholder="댓글을 입력해주세요..."
               rows={4}
-              value={formData.content}
-              onChange={(e) => handleInputChange('content', e.target.value)}
+              value={content}
+              onChange={(e) => setContent(e.target.value)}
               className={errors.content ? 'border-red-500' : ''}
               disabled={isSubmitting}
             />
@@ -159,7 +166,7 @@ function CommentForm({ postId, onCommentAdded }: CommentFormProps) {
                 <p className="text-red-500 text-sm">{errors.content}</p>
               ) : (
                 <p className="text-gray-500 text-sm">
-                  {formData.content.length}/1000자
+                  {content.length}/1000자
                 </p>
               )}
             </div>
@@ -179,8 +186,7 @@ function CommentForm({ postId, onCommentAdded }: CommentFormProps) {
               disabled={isSubmitting}
               className="px-6"
             >
-              {isSubmitting ? '작성 중...' : '댓글 작성'}
-            </Button>
+              {isSubmitting ? '작성 중...' : '댓글 작성'}            </Button>
           </div>
         </form>
         )}
@@ -192,7 +198,39 @@ function CommentForm({ postId, onCommentAdded }: CommentFormProps) {
 /**
  * 댓글 목록 컴포넌트
  */
-function CommentList({ comments }: CommentListProps) {
+function CommentList({ 
+  comments, 
+  editingCommentId, 
+  onCommentUpdated, 
+  onCommentDeleted, 
+  onEditStart, 
+  onEditCancel 
+}: CommentListProps) {
+  const { user } = useUser();
+
+  // 댓글 삭제 처리
+  const handleCommentDelete = async (commentId: string) => {
+    if (!confirm('이 댓글을 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.')) {
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/comments/${commentId}`, {
+        method: 'DELETE',
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || '댓글 삭제에 실패했습니다.');
+      }
+
+      onCommentDeleted(commentId);
+    } catch (error) {
+      console.error('댓글 삭제 오류:', error);
+      alert(error instanceof Error ? error.message : '댓글 삭제 중 오류가 발생했습니다.');
+    }
+  };
+
   if (comments.length === 0) {
     return (
       <div className="text-center py-12">
@@ -222,7 +260,11 @@ function CommentList({ comments }: CommentListProps) {
           onReport={(commentId) => {
             console.log('신고:', commentId);
             // TODO: 신고 기능 구현
-          }}
+          }}          onEdit={onEditStart}
+          onUpdate={onCommentUpdated}
+          onDelete={handleCommentDelete}
+          isEditing={editingCommentId === comment.id}
+          onEditCancel={onEditCancel}
         />
       ))}
     </div>
@@ -235,61 +277,84 @@ function CommentList({ comments }: CommentListProps) {
 export default function CommentSection({ postId, postTitle }: CommentSectionProps) {
   const [comments, setComments] = useState<Comment[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
 
-  // 로컬 스토리지 키 생성
-  const getStorageKey = (postId: string) => `blog-comments-${postId}`;
-
-  // 댓글 로드
-  const loadComments = () => {
+  // 댓글 로드 (API 호출)
+  const loadComments = async () => {
     try {
-      const storageKey = getStorageKey(postId);
-      const savedComments = localStorage.getItem(storageKey);
+      setIsLoading(true);
+      setLoadError(null);
       
-      if (savedComments) {
-        const parsedComments = JSON.parse(savedComments);
-        // Date 객체 복원
-        const commentsWithDates = parsedComments.map((comment: any) => ({
-          ...comment,
-          createdAt: new Date(comment.createdAt),
-          updatedAt: comment.updatedAt ? new Date(comment.updatedAt) : undefined
-        }));
-        
-        // 최신순 정렬
-        commentsWithDates.sort((a: Comment, b: Comment) => 
-          b.createdAt.getTime() - a.createdAt.getTime()
-        );
-        
-        setComments(commentsWithDates);
+      const response = await fetch(`/api/comments?postId=${postId}`);
+      
+      if (!response.ok) {
+        throw new Error('댓글을 불러올 수 없습니다.');
       }
+
+      const { comments: fetchedComments } = await response.json();
+      
+      // API 응답을 프론트엔드 타입으로 변환 및 최신순 정렬
+      const convertedComments = fetchedComments
+        .map(convertCommentFromApi)
+        .sort((a: Comment, b: Comment) => 
+          new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+        );
+      
+      setComments(convertedComments);
     } catch (error) {
       console.error('댓글 로드 중 오류:', error);
+      setLoadError(error instanceof Error ? error.message : '댓글을 불러올 수 없습니다.');
     } finally {
       setIsLoading(false);
     }
   };
 
-  // 댓글 저장
-  const saveComments = (commentsToSave: Comment[]) => {
-    try {
-      const storageKey = getStorageKey(postId);
-      localStorage.setItem(storageKey, JSON.stringify(commentsToSave));
-    } catch (error) {
-      console.error('댓글 저장 중 오류:', error);
+  // 새 댓글 추가 처리
+  const handleCommentAdded = (newComment: Comment) => {
+    const convertedComment = convertCommentFromApi(newComment);
+    setComments(prevComments => [convertedComment, ...prevComments]);
+  };
+  // 댓글 수정 처리
+  const handleCommentUpdated = (updatedComment: Comment) => {
+    setComments(prevComments => 
+      prevComments.map(comment => 
+        comment.id === updatedComment.id ? updatedComment : comment
+      )
+    );
+    // 편집 모드 해제
+    setEditingCommentId(null);
+  };
+
+  // 댓글 삭제 처리
+  const handleCommentDeleted = (commentId: string) => {
+    setComments(prevComments => 
+      prevComments.filter(comment => comment.id !== commentId)
+    );
+    // 편집 중이던 댓글이 삭제된 경우 편집 모드 해제
+    if (editingCommentId === commentId) {
+      setEditingCommentId(null);
     }
   };
 
-  // 새 댓글 추가 처리
-  const handleCommentAdded = (newComment: Comment) => {
-    const updatedComments = [newComment, ...comments];
-    setComments(updatedComments);
-    saveComments(updatedComments);
+  // 편집 시작 처리
+  const handleEditStart = (commentId: string) => {
+    setEditingCommentId(commentId);
+  };
+
+  // 편집 취소 처리
+  const handleEditCancel = () => {
+    setEditingCommentId(null);
   };
 
   // 컴포넌트 마운트 시 댓글 로드
   useEffect(() => {
-    loadComments();
+    if (postId) {
+      loadComments();
+    }
   }, [postId]);
 
+  // 로딩 상태
   if (isLoading) {
     return (
       <div className="py-8">
@@ -299,6 +364,25 @@ export default function CommentSection({ postId, postTitle }: CommentSectionProp
             <div className="h-4 bg-gray-200 rounded"></div>
             <div className="h-4 bg-gray-200 rounded w-3/4"></div>
           </div>
+        </div>
+      </div>
+    );
+  }
+
+  // 에러 상태
+  if (loadError) {
+    return (
+      <div className="py-8">
+        <div className="bg-red-50 border border-red-200 rounded-lg p-6 text-center">
+          <h3 className="text-lg font-medium text-red-800 mb-2">댓글을 불러올 수 없습니다</h3>
+          <p className="text-red-600 mb-4">{loadError}</p>
+          <Button 
+            onClick={loadComments}
+            variant="outline"
+            className="border-red-300 text-red-700 hover:bg-red-50"
+          >
+            다시 시도
+          </Button>
         </div>
       </div>
     );
@@ -338,11 +422,16 @@ export default function CommentSection({ postId, postTitle }: CommentSectionProp
             </div>
           </CardContent>
         </Card>
-      </SignedOut>
-
-      {/* 댓글 목록 */}
+      </SignedOut>      {/* 댓글 목록 */}
       <div>
-        <CommentList comments={comments} />
+        <CommentList 
+          comments={comments} 
+          editingCommentId={editingCommentId}
+          onCommentUpdated={handleCommentUpdated}
+          onCommentDeleted={handleCommentDeleted}
+          onEditStart={handleEditStart}
+          onEditCancel={handleEditCancel}
+        />
       </div>
     </section>
   );

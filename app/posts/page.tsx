@@ -207,9 +207,7 @@ async function PostsList({ searchParams }: { searchParams: any }) {
     console.log('페이지:', page, '카테고리:', category, '정렬:', sort);
 
     // 2025년 새로운 Third-Party Auth 방식 Supabase 클라이언트 생성
-    const supabase = await createServerSupabaseClient();
-
-    // 게시물 데이터 조회
+    const supabase = await createServerSupabaseClient();    // 게시물 데이터 조회 (좋아요 수 포함)
     let postsQuery = supabase
       .from('posts')
       .select(`
@@ -262,9 +260,7 @@ async function PostsList({ searchParams }: { searchParams: any }) {
     // 페이지네이션 적용
     const limit = 9;
     const offset = (page - 1) * limit;
-    postsQuery = postsQuery.range(offset, offset + limit - 1);
-
-    const { data: posts, error: postsError } = await postsQuery;
+    postsQuery = postsQuery.range(offset, offset + limit - 1);    const { data: posts, error: postsError } = await postsQuery;
 
     if (postsError) {
       console.error('게시물 조회 오류:', postsError);
@@ -272,6 +268,23 @@ async function PostsList({ searchParams }: { searchParams: any }) {
     }
 
     console.log(`✅ 게시물 ${posts?.length || 0}개 조회 성공`);
+
+    // 각 게시물의 좋아요 수 조회
+    const postsWithLikes = await Promise.all(
+      (posts || []).map(async (post) => {
+        const { count: likeCount } = await supabase
+          .from('likes')
+          .select('*', { count: 'exact', head: true })
+          .eq('post_id', post.id);
+
+        return {
+          ...post,
+          likeCount: likeCount || 0
+        };
+      })
+    );
+
+    console.log('✅ 좋아요 수 조회 완료');
 
     // 전체 게시물 수 조회 (페이지네이션용)
     let countQuery = supabase
@@ -348,10 +361,8 @@ async function PostsList({ searchParams }: { searchParams: any }) {
       color: '',
       created_at: '',
       updated_at: '',
-    };
-
-    // PostCard 컴포넌트에 맞는 데이터 형식으로 변환
-    const transformedPosts = (posts || []).map(post => ({
+    };    // PostCard 컴포넌트에 맞는 데이터 형식으로 변환 (좋아요 수 포함)
+    const transformedPosts = (postsWithLikes || []).map(post => ({
       id: post.id,
       title: post.title,
       content: post.content,
@@ -389,12 +400,12 @@ async function PostsList({ searchParams }: { searchParams: any }) {
       publishedAt: post.created_at,
       readTime: Math.ceil((post.content?.length || 0) / 200), // 대략적인 읽기 시간
       tags: [], // 추후 구현
-      likes: 0, // 추후 구현
+      likes: post.likeCount, // 서버에서 조회한 좋아요 수
       comments: [], // 추후 구현 - Comment[] 타입으로 수정
       viewCount: post.view_count || 0,
       // BlogPost 타입 필수 필드 추가
       readingTime: Math.ceil((post.content?.length || 0) / 200),
-      likeCount: 0,
+      likeCount: post.likeCount, // 서버에서 조회한 좋아요 수
       featured: false,
     }));
 

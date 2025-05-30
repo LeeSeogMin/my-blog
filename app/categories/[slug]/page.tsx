@@ -29,8 +29,12 @@ export async function generateStaticParams() {
   try {
     console.log('=== 카테고리 정적 경로 생성 시작 ===');
     
-    // 2025년 새로운 Third-Party Auth 방식 Supabase 클라이언트 생성
-    const supabase = await createServerSupabaseClient();
+    // 빌드 타임에는 인증 없이 공개 데이터만 조회
+    const { createClient } = await import('@supabase/supabase-js');
+    const supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+    );
     
     const { data: categories, error } = await supabase
       .from('categories')
@@ -58,8 +62,12 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   try {
     console.log('=== 카테고리 메타데이터 생성 시작 ===', slug);
     
-    // 2025년 새로운 Third-Party Auth 방식 Supabase 클라이언트 생성
-    const supabase = await createServerSupabaseClient();
+    // 빌드 타임에는 인증 없이 공개 데이터만 조회
+    const { createClient } = await import('@supabase/supabase-js');
+    const supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+    );
     
     // 카테고리 정보 조회
     const { data: category, error: categoryError } = await supabase

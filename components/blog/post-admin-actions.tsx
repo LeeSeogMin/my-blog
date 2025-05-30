@@ -23,7 +23,7 @@ import { Edit, Trash2, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface PostAdminActionsProps {
-  postId: number;
+  postId: string;
   postSlug: string;
 }
 

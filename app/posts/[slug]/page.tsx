@@ -8,10 +8,12 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { notFound } from 'next/navigation';
 import { createServerSupabaseClient } from '@/lib/supabase-server';
+import { generatePostMetadata } from '@/lib/metadata';
 import MarkdownContent from '@/components/blog/markdown-content';
 import RelatedPosts from '@/components/blog/related-posts';
 import LikeButton from '@/components/blog/like-button';
 import PostAdminActions from '@/components/blog/post-admin-actions';
+import CommentSection from '@/components/blog/comment-section';
 import { auth } from '@clerk/nextjs/server';
 import type { Metadata } from 'next';
 import { Database } from '@/types/database.types';
@@ -86,10 +88,12 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
         id,
         title,
         content,
+        excerpt,
         slug,
         cover_image_url,
         created_at,
         updated_at,
+        author_id,
         categories (
           id,
           name,
@@ -104,50 +108,42 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
       console.log('❌ 메타데이터 생성 실패: 게시물 없음');
       return {
         title: '포스트를 찾을 수 없습니다 | My Blog',
+        description: '요청하신 포스트를 찾을 수 없습니다.',
       };
     }
 
-    // 게시물 내용에서 요약 생성 (첫 200자)
-    const excerpt = post.content.substring(0, 200).replace(/[#*`]/g, '') + '...';
+    // 카테고리 정보 추출
+    const categoryData = Array.isArray(post.categories) && post.categories.length > 0 
+      ? post.categories[0] 
+      : null;
 
-    console.log('✅ 메타데이터 생성 완료:', post.title);
-    return {
-      title: `${post.title} | My Blog`,
-      description: excerpt,
-      authors: [{ name: '작성자' }], // Clerk에서 가져올 예정
-      openGraph: {
-        title: post.title,
-        description: excerpt,
-        type: 'article',
-        publishedTime: post.created_at,
-        modifiedTime: post.updated_at,
-        authors: ['작성자'],
-        images: post.cover_image_url ? [
-          {
-            url: post.cover_image_url,
-            width: 1200,
-            height: 630,
-            alt: post.title,
-          }
-        ] : [],
-      },
-      twitter: {
-        card: 'summary_large_image',
-        title: post.title,
-        description: excerpt,
-        images: post.cover_image_url ? [post.cover_image_url] : [],
-      },
-    };
+    // 새로운 메타데이터 유틸리티 함수 사용
+    const metadata = generatePostMetadata({
+      title: post.title,
+      content: post.content || '',
+      excerpt: post.excerpt || undefined,
+      slug: post.slug,
+      coverImageUrl: post.cover_image_url,
+      createdAt: post.created_at,
+      updatedAt: post.updated_at,
+      categoryName: categoryData?.name,
+      authorName: '작성자', // 추후 Clerk에서 실제 작성자 정보 가져올 예정
+    });
+
+    console.log('✅ 고급 메타데이터 생성 완료:', post.title);
+    return metadata;
+
   } catch (error) {
     console.error('메타데이터 생성 중 오류 발생:', error);
     return {
       title: '포스트를 찾을 수 없습니다 | My Blog',
+      description: '포스트를 불러오는 중 오류가 발생했습니다.',
     };
   }
 }
 
 // 포스트 헤더 컴포넌트
-function PostHeader({ post, isAuthor }: { post: PostWithCategory; isAuthor: boolean }) {
+function PostHeader({ post, isAuthor, likeCount }: { post: PostWithCategory; isAuthor: boolean; likeCount: number }) {
   return (
     <header className="mb-8">
       {/* 제목 */}
@@ -191,8 +187,8 @@ function PostHeader({ post, isAuthor }: { post: PostWithCategory; isAuthor: bool
         {/* 좋아요 버튼 */}
         <div className="flex items-center">
           <LikeButton
-            postId={post.slug}
-            initialLikes={0} // 추후 구현
+            postId={post.id}
+            initialLikes={likeCount}
             size="lg"
             showCount={true}
           />
@@ -217,7 +213,7 @@ function PostHeader({ post, isAuthor }: { post: PostWithCategory; isAuthor: bool
 }
 
 // 포스트 콘텐츠 컴포넌트
-function PostContent({ post }: { post: PostWithCategory }) {
+function PostContent({ post, likeCount }: { post: PostWithCategory; likeCount: number }) {
   return (
     <article className="mb-16">
       {/* 커버 이미지 */}
@@ -241,13 +237,12 @@ function PostContent({ post }: { post: PostWithCategory }) {
 
       {/* 소셜 공유 및 좋아요 버튼 */}
       <div className="mt-12 pt-8 border-t">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-6">
-          {/* 좋아요 섹션 */}
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-6">          {/* 좋아요 섹션 */}
           <div className="flex items-center gap-4">
             <span className="text-lg font-semibold">이 글이 도움이 되셨나요?</span>
             <LikeButton
-              postId={post.slug}
-              initialLikes={0} // 추후 구현
+              postId={post.id}
+              initialLikes={likeCount}
               size="lg"
               showCount={true}
             />
@@ -301,9 +296,20 @@ export default async function PostDetailPage({ params }: PageProps) {
     if (!post) {
       console.log('❌ 게시물이 존재하지 않음');
       notFound();
+    }    console.log('✅ 게시물 조회 성공:', post.title);
+
+    // 좋아요 수 조회
+    const { count: likeCount, error: likeError } = await supabase
+      .from('likes')
+      .select('*', { count: 'exact', head: true })
+      .eq('post_id', post.id);
+
+    if (likeError) {
+      console.error('좋아요 수 조회 오류:', likeError);
     }
 
-    console.log('✅ 게시물 조회 성공:', post.title);
+    const totalLikes = likeCount || 0;
+    console.log('✅ 좋아요 수 조회 완료:', totalLikes);
 
     // 작성자 권한 확인
     const isAuthor = userId === post.author_id;
@@ -378,39 +384,20 @@ export default async function PostDetailPage({ params }: PageProps) {
       draft: post.status !== 'published'
     };
 
-    console.log('✅ 게시물 상세 페이지 데이터 준비 완료');
-
-    return (
+    console.log('✅ 게시물 상세 페이지 데이터 준비 완료');    return (
       <div className="py-16">
         <div className="max-w-4xl mx-auto">
           {/* 포스트 헤더 */}
-          <PostHeader post={transformedPost} isAuthor={isAuthor} />
+          <PostHeader post={transformedPost} isAuthor={isAuthor} likeCount={totalLikes} />
 
           {/* 포스트 콘텐츠 */}
-          <PostContent post={transformedPost} />
-
-          {/* 관련 포스트 */}
-          <RelatedPosts currentPost={blogPost} />
-
-          {/* 다음 구현할 섹션들 */}
+          <PostContent post={transformedPost} likeCount={totalLikes} />          {/* 관련 포스트 */}
+          <RelatedPosts currentPost={blogPost} />          {/* 댓글 섹션 */}
           <div className="mt-16 pt-8 border-t">
-            <div className="text-center text-muted-foreground">
-              <p className="mb-4">💬 댓글 시스템은 곧 추가될 예정입니다. 👍 좋아요 기능은 이미 활성화되어 있어요!</p>
-              <div className="flex justify-center gap-4">
-                <Link
-                  href="/posts"
-                  className="inline-flex items-center justify-center rounded-lg bg-primary px-6 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
-                >
-                  다른 글 보기
-                </Link>
-                <Link
-                  href="/"
-                  className="inline-flex items-center justify-center rounded-lg border border-input bg-background px-6 py-2 text-sm font-medium hover:bg-accent hover:text-accent-foreground transition-colors"
-                >
-                  홈으로 돌아가기
-                </Link>
-              </div>
-            </div>
+            <CommentSection 
+              postId={post.id} 
+              postTitle={post.title} 
+            />
           </div>
         </div>
       </div>
