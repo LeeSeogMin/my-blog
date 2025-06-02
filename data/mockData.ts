@@ -95,21 +95,21 @@ export const mockCategories: Category[] = [
     name: '웹 개발',
     slug: 'web-development',
     description: '웹 개발 전반에 관한 내용',
-    color: '#3B82F6'
+    color: '#6b7280'
   },
   {
     id: 'cat-2',
     name: 'JavaScript',
     slug: 'javascript',
     description: 'JavaScript 언어와 관련 기술',
-    color: '#F59E0B'
+    color: '#f59e0b'
   },
   {
     id: 'cat-3',
     name: 'React',
     slug: 'react',
     description: 'React 라이브러리와 생태계',
-    color: '#06B6D4'
+    color: '#06b6d4'
   },
   {
     id: 'cat-4',
@@ -123,7 +123,7 @@ export const mockCategories: Category[] = [
     name: 'TypeScript',
     slug: 'typescript',
     description: 'TypeScript 언어와 타입 시스템',
-    color: '#3178C6'
+    color: '#3178c6'
   }
 ];
 

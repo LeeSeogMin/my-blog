@@ -40,14 +40,13 @@ CREATE TABLE categories (
     name VARCHAR(100) NOT NULL UNIQUE,
     slug VARCHAR(100) NOT NULL UNIQUE,
     description TEXT,
-    color VARCHAR(7) DEFAULT '#6366f1', -- 카테고리 색상 (hex 코드)
+    color VARCHAR(20),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
 -- 카테고리 테이블 주석
 COMMENT ON TABLE categories IS '블로그 카테고리 관리 테이블';
-COMMENT ON COLUMN categories.color IS '카테고리 표시 색상 (hex 코드, 예: #6366f1)';
 
 -- 3.2. 게시물 테이블
 CREATE TABLE posts (
@@ -159,9 +158,9 @@ CREATE TRIGGER update_comments_updated_at BEFORE UPDATE ON comments
 -- 기본 카테고리 데이터 삽입 (ON CONFLICT로 재실행 안전성 확보)
 INSERT INTO categories (name, slug, description, color) VALUES
 ('일반', 'general', '일반적인 주제의 블로그 글', '#6b7280'),
-('기술', 'tech', '프로그래밍 및 개발 관련 글', '#3b82f6'),
-('일상', 'daily', '일상적인 이야기와 경험 공유', '#10b981'),
-('개발', 'development', '웹 개발 및 소프트웨어 개발 관련', '#8b5cf6')
+('기술', 'tech', '프로그래밍 및 개발 관련 글', '#f59e0b'),
+('일상', 'daily', '일상적인 이야기와 경험 공유', '#06b6d4'),
+('개발', 'development', '웹 개발 및 소프트웨어 개발 관련', '#000000')
 ON CONFLICT (slug) DO NOTHING;
 
 -- ========================================

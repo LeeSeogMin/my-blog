@@ -89,7 +89,7 @@ export interface Category {
   icon?: string;
   /** 상위 카테고리 ID (중첩 카테고리 구조용) */
   parentId?: string;
-  /** 카테고리 색상 (UI 표현용) */
+  /** 카테고리 색상 */
   color?: string;
 }
 

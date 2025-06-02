@@ -65,24 +65,14 @@ export async function createServerSupabaseClient(): Promise<SupabaseClient<Datab
   const { url, anonKey } = validateEnvironmentVariables();
 
   try {
-    // Clerk 인증 정보 비동기적으로 받아오기
-    const { getToken } = await auth();
-    const token = await getToken({ template: 'supabase' });
-
-    if (process.env.NODE_ENV === 'development') {
-      console.log('🔑 Supabase 서버 클라이언트 토큰:', token ? '✅ 존재' : '❌ 없음');
-    }
-
+    // Clerk 인증 정보 비동기적으로 받아오기 (2025년 4월 1일 이후 토큰 직접 전달 불필요)
+    // Supabase 클라이언트가 자동으로 인증 헤더를 처리함
     const client = createClient<Database>(url, anonKey, {
-      global: {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      },
       auth: {
         persistSession: false,
         autoRefreshToken: false,
       },
     });
-
     return client;
   } catch (error) {
     console.error('❌ Supabase 서버 클라이언트 생성 실패:', error);

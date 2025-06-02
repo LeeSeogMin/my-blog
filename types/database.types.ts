@@ -21,7 +21,7 @@ export interface Category {
   name: string;
   slug: string;
   description: string | null;
-  color: string; // hex 색상 코드 (예: #6366f1)
+  color: string | null;
   created_at: string; // ISO 8601 형식
   updated_at: string; // ISO 8601 형식
 }

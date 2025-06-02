@@ -87,7 +87,6 @@ CREATE POLICY "posts_select_policy" ON posts
   );
 
 -- 게시물 생성: 인증된 사용자만 가능
--- ✅ 새로운 방식: auth.jwt()->>'sub' 직접 사용
 CREATE POLICY "posts_insert_policy" ON posts
   FOR INSERT TO authenticated
   WITH CHECK (
@@ -128,7 +127,6 @@ CREATE POLICY "comments_select_policy" ON comments
   );
 
 -- 댓글 생성: 인증된 사용자만 가능
--- ✅ 새로운 방식: auth.jwt()->>'sub' 직접 사용
 CREATE POLICY "comments_insert_policy" ON comments
   FOR INSERT TO authenticated
   WITH CHECK (
@@ -173,7 +171,6 @@ CREATE POLICY "likes_select_policy" ON likes
   USING (true);
 
 -- 좋아요 생성: 인증된 사용자만 가능 (중복 방지 로직)
--- ✅ 새로운 방식: auth.jwt()->>'sub' 직접 사용
 CREATE POLICY "likes_insert_policy" ON likes
   FOR INSERT TO authenticated
   WITH CHECK (

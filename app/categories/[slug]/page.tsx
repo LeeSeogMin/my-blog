@@ -231,8 +231,7 @@ export default async function CategoryDetailPage({ params }: PageProps) {
       id: category.id,
       name: category.name,
       slug: category.slug,
-      description: category.description || `${category.name} 관련 글들을 모아놓은 카테고리입니다.`,
-      color: category.color || '#3b82f6' // 데이터베이스의 color 컬럼 사용
+      description: category.description || `${category.name} 관련 글들을 모아놓은 카테고리입니다.`
     };
 
     console.log('✅ 카테고리 상세 페이지 데이터 준비 완료');
@@ -254,10 +253,6 @@ export default async function CategoryDetailPage({ params }: PageProps) {
 
             {/* 카테고리 정보 */}
             <div className="flex items-center justify-center gap-3 mb-4">
-              <div 
-                className="w-4 h-4 rounded-full"
-                style={{ backgroundColor: transformedCategory.color }}
-              />
               <h1 className="text-4xl md:text-5xl font-bold">
                 {transformedCategory.name}
               </h1>
